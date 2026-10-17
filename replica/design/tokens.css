@@ -1,0 +1,22 @@
+/* Canonical role tokens. web/tokens.css is its portable preview subset. */
+:root {
+  --bg: #f0f3ed;
+  --surface: #f8faf6;
+  --text: #21382d;
+  --muted: #576a5a;
+  --accent: #286c50;
+  --on-accent: #ffffff;
+  --border: #d5ded2;
+  --border-input: #788c73;
+  --focus: #286c50;
+  --notch: #080a0d;
+  --on-notch: #f5f7fa;
+  --notch-muted: #b7bdc7;
+  --mint: #8de3c0;
+  --warning: #ebc67e;
+  --danger: #a63136;
+  --motion-expand: 420ms;
+  --motion-collapse: 320ms;
+  --motion-content: 160ms;
+  --motion-ease: cubic-bezier(.22,1,.36,1);
+}

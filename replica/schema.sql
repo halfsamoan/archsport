@@ -1,0 +1,27 @@
+-- 전체 제품의 제안 스키마. 초기 engine.py의 최소 DB와 별개이며 자동 적용하지 않는다.
+PRAGMA foreign_keys = ON;
+CREATE TABLE profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE sports (id TEXT PRIMARY KEY, name TEXT NOT NULL, scoring_kind TEXT NOT NULL);
+CREATE TABLE competitions (id TEXT PRIMARY KEY, sport_id TEXT NOT NULL REFERENCES sports(id) ON DELETE RESTRICT, name TEXT NOT NULL, country TEXT, season TEXT, coverage_json TEXT NOT NULL DEFAULT '{}');
+CREATE INDEX competitions_sport ON competitions(sport_id);
+CREATE TABLE teams (id TEXT PRIMARY KEY, name TEXT NOT NULL, short_name TEXT, country TEXT, provider_id TEXT UNIQUE);
+CREATE TABLE matches (id TEXT PRIMARY KEY, competition_id TEXT NOT NULL REFERENCES competitions(id) ON DELETE RESTRICT, home_id TEXT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT, away_id TEXT NOT NULL REFERENCES teams(id) ON DELETE RESTRICT, kickoff_utc TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('scheduled','live','halftime','extra_time','penalties','finished','postponed','cancelled','interrupted','abandoned','unknown')), provider_status TEXT, elapsed INTEGER, extra INTEGER, home_score INTEGER CHECK(home_score >= 0), away_score INTEGER CHECK(away_score >= 0), home_penalties INTEGER, away_penalties INTEGER, updated_at TEXT NOT NULL, CHECK(home_id <> away_id));
+CREATE INDEX matches_kickoff ON matches(kickoff_utc);
+CREATE INDEX matches_competition ON matches(competition_id, kickoff_utc);
+CREATE INDEX matches_home ON matches(home_id, kickoff_utc);
+CREATE INDEX matches_away ON matches(away_id, kickoff_utc);
+CREATE INDEX matches_status ON matches(status);
+CREATE TABLE events (id TEXT PRIMARY KEY, match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE, provider_key TEXT, kind TEXT NOT NULL, detail TEXT, elapsed INTEGER, extra INTEGER, team_id TEXT REFERENCES teams(id) ON DELETE SET NULL, player TEXT, revision INTEGER NOT NULL DEFAULT 1, received_at TEXT NOT NULL);
+CREATE INDEX events_match ON events(match_id, elapsed);
+CREATE INDEX events_team ON events(team_id);
+CREATE TABLE statistics (match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE, team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE, metric TEXT NOT NULL, value TEXT, unit TEXT, observed_at TEXT NOT NULL, PRIMARY KEY(match_id,team_id,metric));
+CREATE INDEX statistics_team ON statistics(team_id);
+CREATE TABLE team_follows (profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE, auto_live INTEGER NOT NULL DEFAULT 1 CHECK(auto_live IN (0,1)), created_at TEXT NOT NULL, PRIMARY KEY(profile_id,team_id));
+CREATE INDEX follows_team ON team_follows(team_id);
+CREATE TABLE competition_follows (profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, competition_id TEXT NOT NULL REFERENCES competitions(id) ON DELETE CASCADE, PRIMARY KEY(profile_id,competition_id));
+CREATE INDEX follows_competition ON competition_follows(competition_id);
+CREATE TABLE tracking (profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE, enabled INTEGER NOT NULL DEFAULT 1, pinned INTEGER NOT NULL DEFAULT 0, muted_until TEXT, PRIMARY KEY(profile_id,match_id));
+CREATE INDEX tracking_match ON tracking(match_id);
+CREATE TABLE preferences (profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE, locale TEXT NOT NULL DEFAULT 'ko', timezone TEXT NOT NULL DEFAULT 'system', spoiler INTEGER NOT NULL DEFAULT 0, reduce_motion INTEGER NOT NULL DEFAULT 0, quiet_hours_json TEXT NOT NULL DEFAULT '{}', top_offset INTEGER NOT NULL DEFAULT 0, monitor TEXT NOT NULL DEFAULT 'primary');
+CREATE TABLE notification_receipts (profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE, match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE, fingerprint TEXT NOT NULL, kind TEXT NOT NULL, delivered_at TEXT NOT NULL, PRIMARY KEY(profile_id,match_id,fingerprint));
+CREATE INDEX receipts_match ON notification_receipts(match_id);

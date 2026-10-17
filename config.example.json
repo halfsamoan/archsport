@@ -1,0 +1,9 @@
+{
+  "mode": "live",
+  "team_name": "Barcelona",
+  "team_country": "Spain",
+  "team_id": null,
+  "poll_seconds": 60,
+  "daily_budget": 90,
+  "key_file": "~/.config/archsport/api-key"
+}

@@ -1,0 +1,21 @@
+{
+  "retrieved_at": "2026-10-17T15:27:12.394375+00:00",
+  "documentation": "https://api-sports.io/documentation/football/v3",
+  "notice": "Club marks belong to their respective rights holders. Included as requested for personal match identification; no trademark ownership or blanket commercial license is asserted.",
+  "logos": [
+    {
+      "team": "FC Barcelona",
+      "provider_id": 529,
+      "url": "https://media.api-sports.io/football/teams/529.png",
+      "file": "529.png",
+      "sha256": "921329187f251f77c4eeaf04ff2f3189cff526837179ccad6b898304fe14e52e"
+    },
+    {
+      "team": "Inter",
+      "provider_id": 505,
+      "url": "https://media.api-sports.io/football/teams/505.png",
+      "file": "505.png",
+      "sha256": "14c915ad4d305d8387e13cadd7f8cef7af99a1b31976ee8c5a1a753a21982cd2"
+    }
+  ]
+}

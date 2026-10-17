@@ -1,0 +1,46 @@
+{
+  "synthetic": true,
+  "get": "fixtures",
+  "errors": [],
+  "paging": {
+    "current": 1,
+    "total": 1
+  },
+  "response": [
+    {
+      "fixture": {
+        "id": 990000001,
+        "date": "2030-01-01T20:00:00+00:00",
+        "status": {
+          "short": "NS",
+          "elapsed": null,
+          "extra": null
+        }
+      },
+      "league": {
+        "id": 2,
+        "name": "Synthetic club match — not a real fixture"
+      },
+      "teams": {
+        "home": {
+          "id": 529,
+          "name": "Barcelona"
+        },
+        "away": {
+          "id": 505,
+          "name": "Inter"
+        }
+      },
+      "goals": {
+        "home": null,
+        "away": null
+      },
+      "score": {
+        "penalty": {
+          "home": null,
+          "away": null
+        }
+      }
+    }
+  ]
+}

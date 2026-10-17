@@ -1,0 +1,58 @@
+feature,area,priority,original,clone,notes,id,evidence,screen,implementation
+최초 관심 팀 선택,onboarding,must,yes,partial,웹은 Barcelona 예시 선택만 제공; 서비스는 config 팀 검색,F001,A03,S01,web/app.js; archsport/provider.py
+팀 검색,discovery,must,yes,partial,공개 API 어댑터 검색 구현; 웹은 예시 목록만 검색,F002,A03;A04,S01,archsport/provider.py
+리그 팔로우,personalization,should,yes,no,Barcelona 단일 팀 우선,F003,A03;A06,S01,planned
+개인화 점수판,scores,must,yes,partial,웹 시연 화면; 실제 다중 경기판 미구현,F004,A04,S02,web/index.html
+어제 오늘 예정 전환,schedule,should,yes,no,조사 및 화면 설계; 날짜 탭 구현은 후속,F005,A04,S02,planned
+실시간 경기 점수,scores,must,yes,partial,데모·공개 API 어댑터 구현; 실API 키 검증 전,F006,A05,S04,archsport/provider.py
+진행 시간과 경기 상태,scores,must,yes,partial,API 상태 정규화; 공급사 분을 그대로 표시,F007,A05,S04,archsport/provider.py; extension/extension.js
+경기별 상세 카드,details,must,yes,partial,웹 상세 모달은 시연 타임라인,F008,A05,S03,web/index.html
+play-by-play 타임라인,details,must,yes,partial,API events 정규화; GNOME 마지막 사건 표시; 전체 실타임라인 후속,F009,A05,S03,archsport/provider.py
+팀 통계,details,should,yes,no,공급사 statistics 연결 예정,F010,A05,S03,planned
+라인업,details,should,yes,no,대회별 데이터 가용성 확인 필요,F011,A01;A05,S03,planned
+종목별 박스 스코어,details,could,yes,no,축구 이후 각 종목 별도 모델,F012,A02,S03,planned
+경기 좌우 전환,navigation,should,yes,no,다중 경기 이후,F013,A05,S03,planned
+경기 공유,sharing,could,yes,no,로컬 링크 또는 텍스트 공유 설계 예정,F014,A05,S03,planned
+수동 경기 추적,tracking,must,yes,no,현재 서비스는 설정한 팀의 경기 하나를 자동 선택,F015,A05,S03,planned
+팀별 자동 추적,tracking,must,yes,partial,Barcelona 팀 ID 기반 조회; 여러 팀 토글 후속,F016,A06,S01;S07,archsport/provider.py
+잠금화면 Live Activities,apple,skip,yes,skip,ActivityKit 및 Apple 디바이스 전용; Linux 노치로 대체,F017,A05,O09,out-of-scope
+Apple Watch 표시,apple,skip,yes,skip,Watch 연동 제외,F018,A01,O09,out-of-scope
+Apple My Sports 계정 동기화,apple,skip,yes,skip,Apple 계정 서비스 복제 안 함,F019,A06,O06,out-of-scope
+Apple TV 시청 연결,apple,skip,conditional,skip,지역·서비스·구독에 종속; 별도 공개 중계 링크는 후속,F020,A05,O05,out-of-scope
+배당 숨기기 및 형식,odds,could,conditional,no,MVP에는 배당 데이터 자체를 넣지 않음,F021,A07,S07,planned
+그룹 및 토너먼트 대진표,tournament,could,conditional,no,대회별 지원; Barcelona 핵심 알림 다음 단계,F022,A08,O10,planned
+다국어,settings,should,yes,partial,시제품 한국어; 다국어 리소스 분리 후속,F023,A07,S07,prototype
+상단 소프트웨어 노치,linux,must,no,partial,GNOME 확장 코드; Ubuntu 실행 검증 전,F024,proposal,S04,extension/extension.js
+물리 노치 없는 ASUS 화면 지원,linux,must,no,partial,소프트웨어 표면; 실모델 해상도 검수 필요,F025,user,S04,extension/extension.js
+접힘 펼침 이벤트 세 상태,linux,must,no,partial,웹 검증; GNOME 코드 실행 검증 전,F026,proposal,S04;S05;S06,web/app.js; extension/extension.js
+득점 후 6초 자동 접기,motion,must,unknown,partial,웹 구현; GNOME 타이머 제공,F027,proposal,S06,web/app.js; extension/extension.js
+노치 곡선과 마스킹,design,must,unknown,partial,웹 날개 곡선·둥근 밑면; GNOME 초기 라운드 표면,F028,proposal,S04,web/style.css; extension/stylesheet.css
+모션 감소,motion,must,unknown,partial,웹 미디어쿼리·토글; GNOME 시스템 설정 읽기,F029,proposal,S07,web/style.css; extension/extension.js
+골 알림 중복 억제,reliability,must,unknown,yes,SQLite 상태와 receipt; 단위 테스트 통과,F030,proposal,S06,archsport/engine.py
+VAR 점수 감소 정정,reliability,must,unknown,yes,점수 감소를 correction으로 분리; 개별 이벤트 revision은 후속,F031,proposal,S06,archsport/engine.py
+절전 후 과거 골 재알림 억제,reliability,must,unknown,yes,120초 초과 공백 baseline; 단위 테스트 통과,F032,proposal,S08,archsport/engine.py
+API 오류 및 마지막 정보 표시,reliability,must,unknown,partial,키 오류·429·HTTP200 errors·예산 소진; GNOME 미실행,F033,proposal,S08,archsport/__main__.py
+요청 예산 제한,data,must,unknown,yes,실패 요청 포함 선예약; 날짜별 카운터 테스트,F034,D03,S07,archsport/engine.py
+공급사 키 보호,data,must,unknown,partial,Python 전용 파일·환경변수; 키체인 연동은 후속,F035,D02,S07,archsport/provider.py
+실제 API로 Barcelona 경기 검증,data,must,no,no,사용자 API 키와 실제 경기로 검수 필요,F036,proposal,S04,validation-pending
+GNOME46 및 GNOME50 실기기 검증,linux,must,no,no,Windows 환경이므로 미실행; 버전 선언은 호환성 보장 아님,F037,L02;L04,S04,validation-pending
+다중 모니터 및 배율,linux,should,no,partial,primary monitor 위치 갱신 코드; 125~200% 검수 필요,F038,proposal,S04,extension/extension.js
+잠금과 overview 숨김,privacy,must,unknown,partial,user session 한정 및 overview 신호 처리; GNOME 실검증 전,F039,L03,S04,extension/extension.js
+전체화면에서 숨김,privacy,should,unknown,partial,monitor fullscreen 감지 경로; 실GNOME 검증 전,F040,proposal,S04,extension/extension.js
+방해금지와 조용한 시간,settings,should,unknown,no,OS 방해금지·야간 알림 정책은 M5,F041,proposal,S07,planned
+스포일러 숨기기,settings,should,unknown,partial,웹 및 native GSettings 연결; 실제 GNOME 검증 전,F042,proposal,S07,web/app.js; extension/extension.js
+선수 카드 교체 개별 알림,notifications,should,unknown,no,이벤트 정보는 수신하나 개별 알림 규칙은 후속,F043,D01,S06,planned
+승부차기 별도 점수,data,should,yes,partial,정규화 필드·테스트; native 표시 후속,F044,A05;D01,S03,archsport/provider.py
+다중 팀과 다중 경기,tracking,could,yes,no,단일 Barcelona 우선,F045,A04,S02,planned
+오프라인 캐시 읽기,scores,should,unknown,partial,재시작 시 마지막 snapshot 복구 테스트 통과; 실제 GNOME 복구 검증 전,F046,proposal,S08,archsport/service.py
+사용자 로컬 설치,distribution,must,no,partial,Ubuntu 설치 스크립트 제공; Windows에서 실행하지 않음,F047,L03,S07,tools/install_extension.py
+실제 축구 구단 로고,assets,must,yes,partial,사용자 요청으로 실제 Barcelona 및 Inter PNG 동봉; 실제 상대 로고 캐시; Apple 자산은 제품에 사용 안 함,F048,user,all,web/assets/logos; archsport/assets.py
+중계 영상 자체 제공,video,skip,unknown,skip,라이선스 영상 제공 범위 제외,F049,A05,S03,out-of-scope
+시연과 실제 데이터 명확한 구분,trust,must,unknown,yes,웹과 daemon에 demo 라벨; 키 없으면 오류,F050,proposal,all,web/index.html; archsport/__main__.py
+변화 때만 사건 목록 조회,data,must,no,yes,fixtures 반복 및 score/status 변화 시 events 1회; 실패 시 점수 유지 테스트 통과,F051,user,S04;S06,archsport/provider.py
+상황별 polling과 FT5분 정책,data,must,no,partial,순수 정책 함수 및 단위 테스트; 실제 GNOME 수명 검증 전,F052,user,S04,archsport/scheduler.py
+팀 ID 영속 캐시,data,must,no,yes,provider 재생성 후 검색 요청 재사용 테스트 통과,F053,user,S01,archsport/engine.py; archsport/provider.py
+네이티브 GUI 설정,settings,must,no,partial,prefs.js 및 GSettings strict schema 검증; 실제 GTK창 실행 검증 전,F054,user,S07,extension/prefs.js
+worker 자동 재시작,reliability,must,no,partial,EOF 및 오류 후 제한 backoff 재시작; 실제 GNOME 강제종료 검증 전,F055,user,S08,extension/extension.js
+절전 복귀 신호,reliability,must,no,partial,logind PrepareForSleep 및 CLI wall/monotonic 경로; 실기기 검증 전,F056,user,S08,extension/extension.js; archsport/__main__.py
+Linux Codex 인계 패키지,handoff,must,no,yes,자급 문서·가상 replay·로고 출처·테스트·설치·진단 포함; 비밀키와 로컬 DB 제외,F057,user,all,docs/LINUX_HANDOFF.md

@@ -1,0 +1,261 @@
+{
+  "synthetic": true,
+  "notice": "Invented scores and timestamps. Real club names/IDs solely for identification.",
+  "frames": [
+    {
+      "match": {
+        "id": "990000001",
+        "home": "Barcelona",
+        "away": "Inter",
+        "home_id": 529,
+        "away_id": 505,
+        "home_score": null,
+        "away_score": null,
+        "home_penalties": null,
+        "away_penalties": null,
+        "status": "scheduled",
+        "provider_status": "NS",
+        "elapsed": null,
+        "extra": null,
+        "kickoff_utc": "2030-01-01T20:00:00+00:00",
+        "competition": "Synthetic club match — not a real fixture",
+        "events": []
+      }
+    },
+    {
+      "match": {
+        "id": "990000001",
+        "home": "Barcelona",
+        "away": "Inter",
+        "home_id": 529,
+        "away_id": 505,
+        "home_score": 0,
+        "away_score": 0,
+        "home_penalties": null,
+        "away_penalties": null,
+        "status": "live",
+        "provider_status": "1H",
+        "elapsed": 1,
+        "extra": null,
+        "kickoff_utc": "2030-01-01T20:00:00+00:00",
+        "competition": "Synthetic club match — not a real fixture",
+        "events": [
+          {
+            "kind": "Goal",
+            "detail": "SYNTHETIC event",
+            "elapsed": 1,
+            "extra": null,
+            "team": "Barcelona",
+            "player": "시연 선수"
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "id": "990000001",
+        "home": "Barcelona",
+        "away": "Inter",
+        "home_id": 529,
+        "away_id": 505,
+        "home_score": 1,
+        "away_score": 0,
+        "home_penalties": null,
+        "away_penalties": null,
+        "status": "live",
+        "provider_status": "1H",
+        "elapsed": 31,
+        "extra": null,
+        "kickoff_utc": "2030-01-01T20:00:00+00:00",
+        "competition": "Synthetic club match — not a real fixture",
+        "events": [
+          {
+            "kind": "Goal",
+            "detail": "SYNTHETIC event",
+            "elapsed": 31,
+            "extra": null,
+            "team": "Barcelona",
+            "player": "시연 선수"
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "id": "990000001",
+        "home": "Barcelona",
+        "away": "Inter",
+        "home_id": 529,
+        "away_id": 505,
+        "home_score": 0,
+        "away_score": 0,
+        "home_penalties": null,
+        "away_penalties": null,
+        "status": "live",
+        "provider_status": "1H",
+        "elapsed": 32,
+        "extra": null,
+        "kickoff_utc": "2030-01-01T20:00:00+00:00",
+        "competition": "Synthetic club match — not a real fixture",
+        "events": [
+          {
+            "kind": "Var",
+            "detail": "SYNTHETIC goal cancelled",
+            "elapsed": 32,
+            "extra": null,
+            "team": "Barcelona",
+            "player": "시연 선수"
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "id": "990000001",
+        "home": "Barcelona",
+        "away": "Inter",
+        "home_id": 529,
+        "away_id": 505,
+        "home_score": 1,
+        "away_score": 0,
+        "home_penalties": null,
+        "away_penalties": null,
+        "status": "live",
+        "provider_status": "1H",
+        "elapsed": 33,
+        "extra": null,
+        "kickoff_utc": "2030-01-01T20:00:00+00:00",
+        "competition": "Synthetic club match — not a real fixture",
+        "events": [
+          {
+            "kind": "Goal",
+            "detail": "SYNTHETIC event",
+            "elapsed": 33,
+            "extra": null,
+            "team": "Barcelona",
+            "player": "시연 선수"
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "id": "990000001",
+        "home": "Barcelona",
+        "away": "Inter",
+        "home_id": 529,
+        "away_id": 505,
+        "home_score": 1,
+        "away_score": 0,
+        "home_penalties": null,
+        "away_penalties": null,
+        "status": "halftime",
+        "provider_status": "HT",
+        "elapsed": 45,
+        "extra": null,
+        "kickoff_utc": "2030-01-01T20:00:00+00:00",
+        "competition": "Synthetic club match — not a real fixture",
+        "events": [
+          {
+            "kind": "Goal",
+            "detail": "SYNTHETIC event",
+            "elapsed": 45,
+            "extra": null,
+            "team": "Barcelona",
+            "player": "시연 선수"
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "id": "990000001",
+        "home": "Barcelona",
+        "away": "Inter",
+        "home_id": 529,
+        "away_id": 505,
+        "home_score": 1,
+        "away_score": 0,
+        "home_penalties": null,
+        "away_penalties": null,
+        "status": "live",
+        "provider_status": "2H",
+        "elapsed": 67,
+        "extra": null,
+        "kickoff_utc": "2030-01-01T20:00:00+00:00",
+        "competition": "Synthetic club match — not a real fixture",
+        "events": [
+          {
+            "kind": "Goal",
+            "detail": "SYNTHETIC event",
+            "elapsed": 67,
+            "extra": null,
+            "team": "Barcelona",
+            "player": "시연 선수"
+          }
+        ]
+      }
+    },
+    {
+      "error": "시연: 네트워크 연결 끊김"
+    },
+    {
+      "match": {
+        "id": "990000001",
+        "home": "Barcelona",
+        "away": "Inter",
+        "home_id": 529,
+        "away_id": 505,
+        "home_score": 2,
+        "away_score": 0,
+        "home_penalties": null,
+        "away_penalties": null,
+        "status": "live",
+        "provider_status": "2H",
+        "elapsed": 68,
+        "extra": null,
+        "kickoff_utc": "2030-01-01T20:00:00+00:00",
+        "competition": "Synthetic club match — not a real fixture",
+        "events": [
+          {
+            "kind": "Goal",
+            "detail": "SYNTHETIC event",
+            "elapsed": 68,
+            "extra": null,
+            "team": "Barcelona",
+            "player": "시연 선수"
+          }
+        ]
+      }
+    },
+    {
+      "match": {
+        "id": "990000001",
+        "home": "Barcelona",
+        "away": "Inter",
+        "home_id": 529,
+        "away_id": 505,
+        "home_score": 2,
+        "away_score": 0,
+        "home_penalties": null,
+        "away_penalties": null,
+        "status": "finished",
+        "provider_status": "FT",
+        "elapsed": 90,
+        "extra": null,
+        "kickoff_utc": "2030-01-01T20:00:00+00:00",
+        "competition": "Synthetic club match — not a real fixture",
+        "events": [
+          {
+            "kind": "Goal",
+            "detail": "SYNTHETIC event",
+            "elapsed": 90,
+            "extra": null,
+            "team": "Barcelona",
+            "player": "시연 선수"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light"><title>Archsport · Barcelona, 한눈에</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css"><script src="app.js" defer></script>
+</head>
+<body>
+<svg class="svg-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+  <symbol id="ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m12 7 5 4-2 6H9l-2-6 5-4ZM12 3v4M3.5 9.5 7 11m10 0 3.5-1.5M6.5 19.5 9 17m6 0 2.5 2.5"/></symbol>
+  <symbol id="chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/></symbol>
+  <symbol id="settings" viewBox="0 0 24 24"><path d="m10 3-.7 3-2 .9-2.7-.9-2 3.5 2 2v2.4l-2 2 2 3.5 2.7-.9 2 .9.7 3h4l.7-3 2-.9 2.7.9 2-3.5-2-2v-2.4l2-2-2-3.5-2.7.9-2-.9L14 3Z"/><circle cx="12" cy="13" r="3"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+  <symbol id="wifi" viewBox="0 0 24 24"><path d="M3 8a15 15 0 0 1 18 0M6 12a10 10 0 0 1 12 0m-9 4a5 5 0 0 1 6 0"/><circle cx="12" cy="20" r=".5"/></symbol>
+</defs></svg>
+<header class="site-header"><a class="brand" href="./" aria-label="Archsport 홈"><span class="brand-icon"><svg><use href="#ball"/></svg></span>archsport<span class="brand-platform">for Ubuntu</span></a><span class="prototype-label"><i></i>인터랙티브 디자인 시제품</span></header>
+<main>
+<section class="hero">
+  <div class="intro">
+    <div class="eyebrow">YOUR TEAM. AT A GLANCE.</div>
+    <h1>경기는 계속.<br>작업도 계속.</h1>
+    <p class="lead">바르셀로나의 모든 순간을,<br>화면 위 작은 노치에서.</p>
+    <p class="description">ASUS 노트북의 Ubuntu를 위한 경기 알림.<br>점수는 가볍게, 중요한 순간은 선명하게.</p>
+    <div class="following"><span class="team-mark fcb small">FCB</span><div><strong>FC Barcelona</strong><span>선택한 팀</span></div><button class="icon-button" id="team-open" aria-label="응원 팀 선택"><svg><use href="#chevron"/></svg></button></div>
+    <div class="mode-controls" role="group" aria-label="노치 상태 선택"><button data-mode="compact">접힘</button><button data-mode="expanded" class="selected" aria-pressed="true">펼침</button><button data-mode="event">득점 알림</button></div>
+    <p class="hint">노치를 직접 클릭해 보세요.</p>
+    <button class="text-button" id="settings-open"><svg><use href="#settings"/></svg> 표시 설정</button>
+  </div>
+  <div class="preview-column">
+    <div class="desktop" aria-label="Ubuntu 바탕화면 디자인 미리보기">
+      <svg class="wallpaper" viewBox="0 0 1100 720" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><defs><linearGradient id="sky" x2=".8" y2="1"><stop stop-color="#b9cdcd"/><stop offset="1" stop-color="#e2d7cc"/></linearGradient><linearGradient id="hill" x2=".3" y2="1"><stop stop-color="#6a8c88"/><stop offset="1" stop-color="#234d49"/></linearGradient></defs><path fill="url(#sky)" d="M0 0h1100v720H0z"/><path fill="#a1b7b2" d="M0 380Q130 310 250 366T480 330T750 350T1100 230V720H0Z"/><path fill="#819c93" d="M0 510Q180 280 390 460T760 390T1100 420V720H0Z"/><path fill="url(#hill)" d="M0 630Q200 360 470 540T860 500T1100 520V720H0Z"/><path fill="#1f4744" d="M0 670Q220 520 440 640T900 600T1100 630V720H0Z"/></svg>
+      <div class="os-panel"><span>활동</span><span>토요일 21:47 <span class="panel-tag">시연 화면</span></span><span class="os-status"><svg><use href="#wifi"/></svg><span class="battery"></span></span></div>
+      <div class="notch-position"><div class="notch" id="notch" data-mode="expanded" role="button" tabindex="0" aria-expanded="true" aria-label="바르셀로나 경기 노치. 클릭하면 접기">
+        <div class="notch-compact"><span class="mini-team">FCB</span><strong class="compact-score">1 : 1</strong><span class="opponent">INT</span><span class="live-minute"><i></i>67′</span></div>
+        <div class="notch-expanded">
+          <div class="notch-meta"><span>유럽 클럽 대항전 · 시연</span><span class="notch-live"><i></i>후반 67′</span></div>
+          <div class="scoreboard"><div class="club"><span class="team-mark fcb">FCB</span><span>Barcelona</span></div><div class="score-main"><span class="home-score">1</span><span class="score-separator">:</span><span>1</span></div><div class="club"><span class="team-mark inter">INT</span><span>Inter</span></div></div>
+          <div class="match-progress"><span></span></div>
+          <div class="last-play"><span class="play-minute">67′</span><span id="last-play">바르셀로나, 공격 전개</span><span class="demo-tag">가상 경기</span></div>
+          <div class="notch-footer"><button id="detail-open">경기 내용 보기 <svg><use href="#chevron"/></svg></button><button id="collapse" aria-label="노치 접기">접기</button></div>
+        </div>
+        <div class="notch-event"><div class="goal-emblem"><svg><use href="#ball"/></svg></div><div><span class="goal-label">바르셀로나 득점 · 시연</span><strong>한 번 더, 앞으로.</strong><span class="goal-description">68′ 시연 선수 · 실제 경기 아님</span></div><strong class="event-score">2 : 1</strong></div>
+      </div></div>
+      <div class="work-window"><div class="window-toolbar"><span class="window-dot"></span><span class="window-dot"></span><span class="window-dot"></span><span>오늘의 작업</span><svg><use href="#settings"/></svg></div><div class="window-body"><span class="work-date">MY WORKSPACE</span><h2>집중할 시간.</h2><p>경기 소식은 Archsport가 전해드릴게요.</p><div class="work-item"><span class="task-check"><svg><use href="#check"/></svg></span>프로젝트 리서치 정리<span>완료</span></div><div class="work-item"><span class="task-circle"></span>새로운 아이디어 스케치<span>진행 중</span></div><div class="work-item"><span class="task-circle"></span>내일의 일정 확인</div></div></div>
+      <div class="desktop-caption"><span><i></i>소프트웨어 노치 · 물리 노치 불필요</span><button id="connection-toggle">오프라인 시연</button></div>
+    </div>
+    <div class="preview-footnote"><span>Ubuntu GNOME · ASUS Vivobook 15 Pro</span><span>시연 점수 및 일정 · 실시간 데이터 미연결</span></div>
+  </div>
+</section>
+<section class="states" aria-label="노치 상태 디자인 레퍼런스"><div class="section-heading"><h2>작은 공간, 세 가지 표정.</h2><span>필요한 만큼만 보여줍니다.</span></div><div class="state-grid">
+  <button class="state-card" data-mode="compact"><div class="state-stage"><div class="mini-notch compact-example"><span class="mini-team">FCB</span><strong>1 : 1</strong><span>INT</span><span class="mint">67′</span></div></div><div class="state-copy"><span>01</span><div><h3>한눈에 점수</h3><p>작업을 가리지 않는 작은 스코어보드</p></div><svg><use href="#chevron"/></svg></div></button>
+  <button class="state-card" data-mode="expanded"><div class="state-stage"><div class="mini-notch expanded-example"><span class="mint">후반 67′ <span>시연 경기</span></span><strong><b class="tiny-mark">FCB</b> 1 : 1 <b class="tiny-mark blue">INT</b></strong><span>Barcelona <span>Inter</span></span></div></div><div class="state-copy"><span>02</span><div><h3>한 번 눌러, 경기 속으로</h3><p>경기 시간과 마지막 상황까지</p></div><svg><use href="#chevron"/></svg></div></button>
+  <button class="state-card" data-mode="event"><div class="state-stage"><div class="mini-notch event-example"><svg><use href="#ball"/></svg><div><span class="mint">바르셀로나 득점 · 시연</span><strong>68′ 시연 선수</strong></div><strong>2 : 1</strong></div></div><div class="state-copy"><span>03</span><div><h3>놓칠 수 없는 순간</h3><p>득점은 펼쳐서, 6초 후 다시 조용히</p></div><svg><use href="#chevron"/></svg></div></button>
+</div></section>
+<footer class="page-footer"><span>Archsport / Design reference 01</span><span>Apple Sports의 핵심 흐름을 Ubuntu에 맞게 새로 설계했습니다.</span></footer>
+</main>
+<dialog id="details"><div class="dialog-heading"><div><span class="eyebrow">MATCH CENTER · DEMO</span><h2>경기 내용</h2></div><button data-close="details" class="icon-button" aria-label="경기 내용 닫기"><svg><use href="#close"/></svg></button></div><div class="detail-score"><span>Barcelona</span><strong id="detail-score">1 : 1</strong><span>Inter</span></div><p class="dialog-note">가상 시연 경기입니다. 실제 일정·통계가 아닙니다.</p><h3>주요 상황</h3><ol class="timeline"><li><time>67′</time><div><strong>공격 전개</strong><p>바르셀로나가 상대 진영으로 공을 연결합니다.</p></div></li><li><time>52′</time><div><strong>Inter 득점</strong><p>시연 선수 · 동점</p></div></li><li><time>23′</time><div><strong>Barcelona 득점</strong><p>시연 선수 · 선제 득점</p></div></li></ol></dialog>
+<dialog id="preferences"><div class="dialog-heading"><h2>표시 설정</h2><button data-close="preferences" class="icon-button" aria-label="표시 설정 닫기"><svg><use href="#close"/></svg></button></div><p class="dialog-note">이 브라우저의 디자인 시연에만 적용합니다.</p><label class="setting-row"><span><strong>동작 줄이기</strong><small>노치 크기를 즉시 전환합니다.</small></span><input type="checkbox" id="reduce-motion" role="switch"></label><label class="setting-row"><span><strong>스포일러 숨기기</strong><small>점수를 가리고 득점 알림을 숨깁니다.</small></span><input type="checkbox" id="spoiler" role="switch"></label></dialog>
+<dialog id="teams"><div class="dialog-heading"><h2>응원 팀</h2><button data-close="teams" class="icon-button" aria-label="응원 팀 선택 닫기"><svg><use href="#close"/></svg></button></div><label class="search-label">팀 검색<input type="search" id="team-search" placeholder="Barcelona" autocomplete="off"></label><div id="team-result" class="team-result"><span class="team-mark fcb small">FCB</span><div><strong>FC Barcelona</strong><small>스페인 · 시연용 팀 목록</small></div><button id="follow" aria-pressed="true">선택됨</button></div><p id="search-empty" hidden>일치하는 시연 팀이 없습니다.</p><p class="dialog-note">실제 전체 팀 검색은 API 연결 단계에서 제공합니다.</p></dialog>
+<div class="sr-only" id="announcement" role="status" aria-live="polite"></div>
+</body></html>

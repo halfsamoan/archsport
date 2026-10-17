@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.archsport" path="/org/gnome/shell/extensions/archsport/">
+    <key name="mode" type="s"><default>'live'</default><summary>live or demo</summary></key>
+    <key name="team-name" type="s"><default>'Barcelona'</default><summary>Provider team name</summary></key>
+    <key name="team-country" type="s"><default>'Spain'</default><summary>Provider country</summary></key>
+    <key name="poll-seconds" type="i"><range min="15" max="60"/><default>60</default><summary>In-game refresh interval</summary></key>
+    <key name="daily-budget" type="i"><range min="0" max="100000"/><default>90</default><summary>Local API request cap</summary></key>
+    <key name="show-notch" type="b"><default>true</default><summary>Show notch</summary></key>
+    <key name="expand-on-event" type="b"><default>true</default><summary>Expand on score or status change</summary></key>
+    <key name="hide-fullscreen" type="b"><default>true</default><summary>Hide in fullscreen</summary></key>
+    <key name="show-upcoming" type="b"><default>true</default><summary>Show future fixture</summary></key>
+    <key name="spoiler" type="b"><default>false</default><summary>Hide scores and events</summary></key>
+    <key name="event-seconds" type="i"><range min="2" max="30"/><default>6</default><summary>Event display seconds</summary></key>
+    <key name="monitor-index" type="i"><range min="-1" max="15"/><default>-1</default><summary>-1 primary monitor</summary></key>
+    <key name="key-revision" type="i"><default>0</default><summary>Restart after private key file changes</summary></key>
+  </schema>
+</schemalist>

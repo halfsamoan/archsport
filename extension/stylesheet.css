@@ -1,0 +1,10 @@
+.archsport-notch { background-color: #080a0d; color: #f5f7fa; border-radius: 0 0 26px 26px; padding: 14px 20px; spacing: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.25); }
+.archsport-notch:focus { border: 2px solid #8de3c0; }
+.archsport-compact { spacing: 16px; }
+.archsport-team { color: #f5f7fa; font-weight: 700; font-size: 14px; }
+.archsport-score { color: #ffffff; font-size: 36px; font-weight: 800; }
+.archsport-caption { color: #b7bdc7; font-size: 12px; }
+.archsport-live { color: #8de3c0; font-size: 12px; }
+.archsport-alert { color: #8de3c0; font-size: 15px; font-weight: bold; }
+.archsport-close { color: #f5f7fa; background-color: #252b32; border-radius: 10px; padding: 6px 16px; }
+.archsport-close:focus, .archsport-close:hover { background-color: #38423c; }

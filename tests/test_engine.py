@@ -1,0 +1,66 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from archsport.engine import Store
+
+
+def match(home=1, away=0, status='live'):
+    return dict(id='f1', home_score=home, away_score=away, status=status)
+
+
+class EngineTests(unittest.TestCase):
+    def setUp(self):
+        self.store = Store(':memory:')
+
+    def tearDown(self):
+        self.store.close()
+
+    def test_first_snapshot_is_not_a_goal(self):
+        self.assertIsNone(self.store.ingest(match(), 0))
+
+    def test_goal_and_duplicate(self):
+        self.store.ingest(match(), 0)
+        self.assertEqual(self.store.ingest(match(2), 30)['kind'], 'score')
+        self.assertIsNone(self.store.ingest(match(2), 60))
+
+    def test_var_and_repeated_legitimate_goal(self):
+        self.store.ingest(match(), 0)
+        first = self.store.ingest(match(2), 30)
+        self.assertEqual(self.store.ingest(match(), 60)['kind'], 'correction')
+        second = self.store.ingest(match(2), 90)
+        self.assertNotEqual(first['fingerprint'], second['fingerprint'])
+
+    def test_suspend_does_not_replay(self):
+        self.store.ingest(match(), 0)
+        self.assertIsNone(self.store.ingest(match(4), 300))
+
+    def test_null_is_not_zero_or_goal(self):
+        self.store.ingest(match(None, None, 'scheduled'), 0)
+        result = self.store.ingest(match(0, 0, 'live'), 30)
+        self.assertEqual(result['kind'], 'status')
+
+    def test_finish_once(self):
+        self.store.ingest(match(), 0)
+        self.assertEqual(self.store.ingest(match(status='finished'), 30)['title'], '경기 종료')
+        self.assertIsNone(self.store.ingest(match(status='finished'), 60))
+
+    def test_budget_blocks_before_request_and_resets_by_day(self):
+        self.assertTrue(self.store.reserve_request(1, '2026-10-17'))
+        self.assertFalse(self.store.reserve_request(1, '2026-10-17'))
+        self.assertTrue(self.store.reserve_request(1, '2026-10-18'))
+
+    def test_reopen_preserves_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'state.db'
+            first = Store(path)
+            first.ingest(match(), 0)
+            first.ingest(match(2), 30)
+            first.close()
+            second = Store(path)
+            self.assertIsNone(second.ingest(match(2), 60))
+            second.close()
+
+
+if __name__ == '__main__':
+    unittest.main()

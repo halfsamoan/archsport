@@ -1,0 +1,9 @@
+{
+  "uuid": "archsport@local",
+  "name": "Archsport — Barcelona Notch",
+  "description": "Barcelona match notch with native preferences and adaptive polling. GNOME 46/50 hardware validation pending.",
+  "shell-version": ["46", "50"],
+  "version": 2,
+  "settings-schema": "org.gnome.shell.extensions.archsport",
+  "session-modes": ["user"]
+}
