@@ -7,17 +7,18 @@ import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isP
 
 // One registry and one capture-phase listener for the two independently installed extensions.
 const KEY = `_archsportMatciNotchDock_v${DOCK_PROTOCOL}`;
-const OPEN_MS = 220;
-const CLOSE_MS = 170;
+const OPEN_MS = 230;
+const CLOSE_MS = 165;
+const POSITION_MS = 260;
 
 function layoutSourceHash() {
     let hash = 2166136261;
-    const contract = [`protocol=${DOCK_PROTOCOL}`, `open=${OPEN_MS}`, `close=${CLOSE_MS}`,
+    const contract = [`protocol=${DOCK_PROTOCOL}`, `open=${OPEN_MS}`, `close=${CLOSE_MS}`, `position=${POSITION_MS}`,
         disconnectCapture, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
         classifyOutsideSurface, shouldDismissOutside, dispatchOutsideDismiss,
         eventCoordinates, buttonNumber, hideActor, showActor, insideActiveSurface, getDock, DockParticipant]
         .map(fn => typeof fn === 'string' ? fn : fn.toString()).join('|');
-    for (const char of `${contract}|capture-dismiss-v4|motion-v1`) {
+    for (const char of `${contract}|capture-dismiss-v4|motion-v2`) {
         hash ^= char.charCodeAt(0);
         hash = Math.imul(hash, 16777619);
     }
@@ -68,7 +69,7 @@ function hideActor(dock, participant, animate = true) {
     }
     participant.closing = true;
     try {
-        actor.ease({opacity: 0, scale_x: 0.985, scale_y: 0.94, duration,
+        actor.ease({opacity: 0, scale_x: 0.99, scale_y: 0.975, duration,
             mode: Clutter.AnimationMode.EASE_IN_CUBIC,
             onComplete: () => {
                 if (dock.shuttingDown || participant.disposed || participant.transitionId !== transitionId)
@@ -105,8 +106,8 @@ function showActor(dock, participant) {
         if (duration && (wasHidden || reversingClose)) {
             if (wasHidden) {
                 actor.opacity = 0;
-                actor.scale_x = 0.985;
-                actor.scale_y = 0.94;
+                actor.scale_x = 0.99;
+                actor.scale_y = 0.975;
             }
             actor.ease({opacity: 255, scale_x: 1, scale_y: 1, duration,
                 mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
@@ -189,7 +190,7 @@ function getDock() {
                             participant.targetPosition = target;
                             let duration = 0;
                             try {
-                                if (participant.animations.get_boolean('enable-animations')) duration = 320;
+                                if (participant.animations.get_boolean('enable-animations')) duration = POSITION_MS;
                             } catch (_error) { duration = 0; }
                             try {
                                 participant.actor.ease({x: placement.x, y: placement.y, duration,

@@ -9,9 +9,9 @@
 |---|---|---|
 | 역할 | Barcelona·Lazio·Como 축구 일정, 경기 중 점수·이벤트, 노치 알림 | 시스템 RAM·앱 메모리 관찰, 사용자가 고른 앱 창의 정상 닫기 요청 |
 | 구조 | GNOME Shell 확장 + Python worker + football-data.org 일정 + API-Football 라이브 | GNOME Shell 확장 + Python `/proc` worker + UID 범위 SQLite 기록 |
-| 소스 버전 | 12 | 9 |
-| 현재 GNOME 상태(2026-10-19 확인) | 설치/GJS v11 ACTIVE; workspace v12는 GitHub 반영 후 새 UI 적용 검수 대기 | 설치/GJS v8 ACTIVE; workspace v9는 GitHub 반영 후 새 UI 적용 검수 대기 |
-| 자동 검증 | Python 65/65, Node 11/11, ESLint 0 errors, strict schema 통과 | Python 51/51, Node 26/26, ESLint 0 errors, strict schema 통과 |
+| 소스 버전 | 13 | 10 |
+| 현재 GNOME 상태(2026-10-19 확인) | 설치/GJS v11 ACTIVE; workspace v13은 GitHub 반영 후 새 UI 적용 검수 대기 | 설치/GJS v8 ACTIVE; workspace v10은 GitHub 반영 후 새 UI 적용 검수 대기 |
+| 자동 검증 | Python 65/65, Node 12/12, ESLint 0 errors, strict schema 통과 | Python 51/51, Node 27/27, ESLint 0 errors, strict schema 통과 |
 | 실기 범위 | football-data 일정 3개·최근 결과 5개, API-Football 라이브 경기 1개 수신 확인; v11 worker 실행 확인. 새 버전의 화면 모양·실제 알림은 시각 검수 전 | 현재 Ubuntu `/proc` smoke 통과; 실제 GUI 창 닫기와 두 노치 배치는 미검증 |
 
 두 코드는 별도 저장소다. Archsport는 `/home/k/workspace/arch/archsport`, matci는 `/home/k/workspace/arch/matci`에 있다. 두 앱은 Python worker나 SQLite를 공유하지 않는다. GNOME Shell의 작은 노치 배치 등록부만 공유한다.
@@ -86,7 +86,7 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 ### 노치 화면·상호작용
 
 - Archsport 접힌 상태는 클럽 문장/이름, 스코어와 분·상태를 한 줄로 보여준다. 펼친 상태는 경기 카드, 다음 경기, 최근 결과와 이벤트를 표시하며 일정은 달력 아이콘, 최근 결과는 기록 아이콘, 설정·접기는 접근성 이름이 있는 아이콘 버튼으로 제공한다.
-- 경기 상태가 없으면 노치를 숨기고 진행 중인 경기 또는 일회성 알림에서만 나타난다. 화면 너비에 따라 280px compact / 최대 520px expanded로 제한하고, 320ms cubic ease 크기 전환을 사용한다. overview, 잠금, 설정된 전체화면, 절전 때는 숨긴다.
+- 경기 상태가 없으면 노치를 숨기고 진행 중인 경기 또는 일회성 알림에서만 나타난다. 화면 너비에 따라 280px compact / 최대 520px expanded로 제한하고, 280ms cubic ease 크기 전환을 사용한다. overview, 잠금, 설정된 전체화면, 절전 때는 숨긴다.
 - 매치 이벤트는 득점 아이콘/상태와 짧은 자동 접힘으로 표시한다. spoiler 설정 시 점수·자동 확장 알림을 감춘다. data error는 offline 아이콘/문구로 구분한다. spoiler 옵션은 후속 제품 정리 작업에서 제거 예정이다.
 - 수동 펼침 중 matci가 우선권을 가지면 스포츠 알림은 재시도 대기한다. 대기 알림은 `XDG_STATE_HOME/archsport/pending-alerts.json`에 저장하고, 최초 대기 시각 기준 2시간 이내이며 현재 payload의 경기 ID·킥오프가 일치하는 항목만 복원한다. 다른 노치·overview·fullscreen이 표시를 막는 동안에도 만료하며, 실제 GNOME Shell 재시작 후 표시 여부는 아직 기기에서 확인하지 않았다.
 
@@ -145,8 +145,8 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 
 ### 노치 화면·상호작용
 
-- 패널에는 RAM 사용률을 상시 짧게 표시하고 클릭하면 세부 화면을 연다. 확장 화면은 `LIVE`/`SYNC`/`STALE` 상태, 사용률·가용/전체 메모리, 사용량 막대, 앱별 창 수·메모리 metric·관측 나이·마지막 입력 나이를 표시한다.
-- 앱 아이콘과 체크/보호 아이콘, 설정·접기·새로고침 버튼을 사용하고 키보드 접근성 이름을 제공한다. 목록이 길면 내부 스크롤한다. 화면 폭 최대 500px, 높이 최대 350px이며 설정된 애니메이션은 320ms cubic ease다.
+- 패널에는 RAM 사용률을 상시 짧게 표시하고 클릭하면 세부 화면을 연다. 확장 화면은 정상 관측 시 작은 상태 점과 `정상`, 그 외에는 `시연`·`연결 오류`·`연결 중` 상태를 표시한다. 사용률·가용/전체 메모리, 사용량 막대, 앱별 창 수·메모리 metric·관측 나이·마지막 입력 나이도 표시한다.
+- 앱 아이콘과 체크/보호 아이콘, 설정·접기·새로고침 버튼을 사용하고 키보드 접근성 이름을 제공한다. 목록이 길면 내부 스크롤한다. 화면 폭 최대 500px, 높이 최대 350px이며 확장 geometry는 GNOME 모션 설정을 따라 280ms cubic ease다.
 - RAM 사용 제안은 opt-in이다. 임계치 이상 30초 유지 후 쿨다운을 지키고, 사용자가 펼쳐둔 상태에는 자동으로 열지 않는다. 앱 종료 대신 닫기 검토/확정 흐름으로 이어진다.
 - 노치 UI는 코드/단위 테스트에는 있지만 실제 GNOME 창 매핑, 클릭·애니메이션, 설정창 영향은 실기 검수 전이다.
 
@@ -228,7 +228,7 @@ Node 검사 경고는 `.js` 파일이 Node package의 `type=module`로 선언되
 
 ## 설치·현재 세션 상태
 
-2026-10-19 재로그인 후 GNOME Shell 50.1에서 설치 경로와 실행 GJS 버전이 Archsport v11, matci v8로 일치하고 두 확장 모두 `ACTIVE`다. 이 turn에서 `gnome-extensions info`로 해당 버전/상태를 재확인했다. workspace 소스는 이제 v12/v9이며, 두 확장 UI를 다시 로드하지 않았다.
+2026-10-19 재로그인 후 GNOME Shell 50.1에서 설치 경로와 실행 GJS 버전이 Archsport v11, matci v8로 일치하고 두 확장 모두 `ACTIVE`다. 이 turn에서 `gnome-extensions info`로 해당 버전/상태를 재확인했다. workspace 소스는 이제 Archsport v13/matci v10이며, 두 확장 UI를 다시 로드하지 않았다.
 
 이전 Shell 종료 로그에는 matci v7의 UI actor가 이미 dispose된 뒤 callback에서 접근했다는 경고가 남았다. 새 Shell의 확장 활성 상태와 worker 실행은 확인됐지만 화면 모양과 입력 반응은 별도 시각 검수가 아니다. 새 Shell 시작 뒤 수집한 로그에서는 두 확장의 새 오류를 확인하지 못했다.
 
@@ -236,7 +236,7 @@ Node 검사 경고는 `.js` 파일이 Node package의 `type=module`로 선언되
 
 | 우선순위 | 미완료 항목 | 완료 증거 |
 |---|---|---|
-| P0 | staged Archsport v12·matci v9을 GNOME Shell 50.1에서 실제 화면/입력으로 검수 | 사용자 작업창을 닫지 않는 안전한 확장 재적용 뒤 양 확장 source hash와 ACTIVE 버전, 노치/일정/경기 상태 스크린샷, 오류 로그 확인 |
+| P0 | staged Archsport v13·matci v10을 GNOME Shell 50.1에서 실제 화면/입력으로 검수 | 사용자 작업창을 닫지 않는 안전한 확장 재적용 뒤 양 확장 source hash와 ACTIVE 버전, 노치/일정/경기 상태 스크린샷, 오류 로그 확인 |
 | P0 | matci 일반 창 닫기 실제 동작 | 저장하지 않은 대화상자 취소, 창 거부, 창 닫힘, background process 잔존을 Ubuntu에서 직접 확인 |
 | P1 | 경기 알림 priority queue 실기 | matci를 수동으로 연 동안 골/킥오프 알림 발생 후 matci 닫은 뒤 Archsport가 표시되는지 확인 |
 | P1 | 지난 경기 세부 스탯 | football-data.org 무료 데이터는 점수까지만 제공하고 실제 API-Football key는 2025시즌 fixture 조회를 거절했다. 현재 무료 key가 허용하는 시즌 범위를 확인하거나 다른 사용 허가된 공급원을 확보해야 구현 가능 |

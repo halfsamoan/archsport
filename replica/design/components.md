@@ -26,10 +26,10 @@
 
 | 변화 | 목표 | 타이밍 | 구현 및 제한 |
 |---|---|---|---|
-| compact/hidden → expanded | 상단 패널 아래에서 외곽이 열림 | GNOME 크기 320ms + 표면 opacity/scale 220ms | Clutter EASE_OUT_CUBIC, 모션 설정을 따름 |
-| expanded → hidden | 투명도와 세로 크기를 줄여 접힘 | 170ms | 다른 창·패널 입력은 차단하지 않고 원 이벤트 전달 |
-| 내용 등장 | 글자 왜곡 없이 사건 정보 표시 | 점수/사건 행 220–240ms | 텍스트를 확대하지 않고 opacity·짧은 y 이동만 사용 |
-| expanded → compact | 정보 밀도 감소, compact 상태 유지 | GNOME 크기 320ms | compact 라이브 경기는 접은 뒤에도 표시 |
+| compact/hidden → expanded | 상단 패널 아래에서 graphite 표면이 열림 | GNOME 크기 280ms + opacity/subtle scale 230ms | Clutter EASE_OUT_CUBIC, 모션 설정을 따름 |
+| expanded → hidden | 투명도와 세로 크기를 줄여 접힘 | 165ms | 다른 창·패널 입력은 차단하지 않고 원 이벤트 전달 |
+| 내용 등장 | 글자 왜곡 없이 사건 정보 표시 | 점수/사건 행 210/190ms | 텍스트를 확대하지 않고 opacity·짧은 y 이동만 사용 |
+| expanded → compact | 정보 밀도 감소, compact 상태 유지 | GNOME 크기 280ms | compact 라이브 경기는 접은 뒤에도 표시 |
 | 골 | 사건을 알아볼 정도의 한 번 반응 | 웹 배지 600ms, GNOME 텍스트 이동 | 한 번만. 깜빡임·무한 맥동·폭죽 없음 |
 | 자동 접힘 | 방해 최소화 | 수신/시연 후 6000ms | 이전 timer 취소, 새 이벤트가 최신 timer 소유 |
 | 모션 감소 | 정보 유지, 큰 움직임 제거 | 0ms 크기 변화 | 웹 prefers-reduced-motion 및 설정; GNOME enable-animations |

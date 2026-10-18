@@ -63,7 +63,8 @@ export default class Archsport extends Extension {
             staleIndicator.destroy();
         }
         this._indicator = new PanelMenu.Button(0.0, 'Archsport');
-        this._indicator.add_child(new St.Label({text: '⚽', y_align: Clutter.ActorAlign.CENTER}));
+        this._indicator.add_child(new St.Icon({icon_name: 'x-office-calendar-symbolic', icon_size: 16,
+            y_align: Clutter.ActorAlign.CENTER, accessible_name: '경기 일정'}));
         this._indicator.menu.addAction('노치 펼치기 / 접기', () => this._toggle());
         this._indicator.menu.addAction('일정 · 최근 경기', openDashboard);
         this._indicator.menu.addAction('Archsport 설정', () => this._openPreferences());
@@ -190,7 +191,7 @@ export default class Archsport extends Extension {
         if (geometry !== this._geometry) {
             this._geometry = geometry;
             this._root.remove_all_transitions();
-            this._root.ease({width, height, duration: this._interface.get_boolean('enable-animations') ? 320 : 0,
+            this._root.ease({width, height, duration: this._interface.get_boolean('enable-animations') ? 280 : 0,
                 mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
         }
         this._indicator.visible = true;
@@ -226,6 +227,21 @@ export default class Archsport extends Extension {
         if (!path || !GLib.file_test(path, GLib.FileTest.IS_REGULAR)) return null;
         return new St.Icon({gicon: new Gio.FileIcon({file: Gio.File.new_for_path(path)}),
             icon_size: size, accessible_name: match[side], y_align: Clutter.ActorAlign.CENTER});
+    }
+
+    _watchedCrestIcon(match, size) {
+        if (!match) return null;
+        const normalize = value => String(value ?? '').toLowerCase().replace(/\bfc\b/g, '').replace(/[^a-z0-9]/g, '');
+        const watched = new Set(this._settings.get_strv('watch-teams').map(normalize));
+        for (const [side, index] of [['home', 0], ['away', 1]]) {
+            if (!watched.has(normalize(match[side])) && !watched.has(normalize(match.team_keys?.[index]))) continue;
+            const path = match[`${side}_logo_path`] ?? (match[`${side}_id`] ?
+                GLib.build_filenamev([this.path, 'assets', 'logos', `${match[`${side}_id`]}.png`]) : null);
+            if (path && GLib.file_test(path, GLib.FileTest.IS_REGULAR))
+                return new St.Icon({gicon: new Gio.FileIcon({file: Gio.File.new_for_path(path)}),
+                    icon_size: size, accessible_name: match[side], y_align: Clutter.ActorAlign.CENTER});
+        }
+        return null;
     }
 
     _schedulePendingAlert() {
@@ -332,9 +348,20 @@ export default class Archsport extends Extension {
             if (match) row.add_child(this._logo(match, 'home', 20));
             row.add_child(this._label(score, 'archsport-team'));
             if (match) row.add_child(this._logo(match, 'away', 20));
-            const status = new St.BoxLayout({style_class: data.health === 'error' ? 'archsport-state-stale' : 'archsport-state-live'});
-            status.add_child(new St.Icon({icon_name: data.health === 'error' ? 'dialog-warning-symbolic' : 'media-record-symbolic', icon_size: 10}));
-            status.add_child(this._label(data.mode === 'demo' ? 'DEMO' : data.health === 'error' ? '오프라인' : match?.status === 'halftime' ? 'HT' : liveMinute, 'archsport-live'));
+            const isLive = data.mode !== 'demo' && ['live', 'halftime', 'extra_time', 'penalties', 'interrupted'].includes(match?.status);
+            const status = new St.BoxLayout({style_class: data.health === 'error' ? 'archsport-state-stale' :
+                isLive ? 'archsport-state-live' : 'archsport-state-idle'});
+            const statusIcon = data.health === 'error' ? 'dialog-warning-symbolic' :
+                isLive ? 'media-record-symbolic' : match?.status === 'scheduled' ? 'x-office-calendar-symbolic' :
+                    'x-office-calendar-symbolic';
+            const statusIconActor = new St.Icon({icon_name: statusIcon, icon_size: 10});
+            if (isLive) statusIconActor.add_style_class_name('archsport-live-dot');
+            statusIconActor.accessible_name = isLive ? '경기 진행 중' : '';
+            status.add_child(statusIconActor);
+            const compactStatus = data.mode === 'demo' ? '시연' : data.health === 'error' ? '오프라인' :
+                match?.status === 'halftime' ? 'HT' : match?.status === 'scheduled' ? '예정' : liveMinute;
+            status.add_child(this._label(compactStatus, data.health === 'error' ? 'archsport-alert' :
+                isLive ? 'archsport-live' : 'archsport-caption'));
             row.add_child(status);
             const compact = new St.Button({style_class: 'archsport-compact-button', can_focus: true, x_expand: true,
                 accessible_name: `${match?.home ?? '축구'} ${score}, ${match?.away ?? ''} ${clock || '경기 정보'}. 펼쳐서 일정과 최근 경기 보기`});
@@ -345,7 +372,9 @@ export default class Archsport extends Extension {
             this._root.add_style_class_name('archsport-open');
             const header = new St.BoxLayout({style_class: 'archsport-header'});
             const identity = new St.BoxLayout({style_class: 'archsport-identity'});
-            identity.add_child(this._label('⚽', 'archsport-brand'));
+            identity.add_child(this._watchedCrestIcon(match, 18) ?? new St.Icon({
+                icon_name: 'x-office-calendar-symbolic', icon_size: 16,
+                y_align: Clutter.ActorAlign.CENTER, accessible_name: '경기 일정'}));
             identity.add_child(this._label(alert?.title || (data.mode === 'demo' ? '시연' : data.health === 'error' ?
                 (data.ui_version_mismatch ? data.message : '오프라인') : clock || '경기 정보'),
                 alert ? 'archsport-alert' : 'archsport-live'));
@@ -378,7 +407,7 @@ export default class Archsport extends Extension {
                     scoreLabel.opacity = 0;
                     scoreLabel.translation_y = 4;
                     scoreLabel.ease({opacity: 255, translation_y: 0,
-                        duration: this._interface.get_boolean('enable-animations') ? 240 : 0,
+                        duration: this._interface.get_boolean('enable-animations') ? 210 : 0,
                         mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
                 }
                 scoreboard.add_child(scoreLabel);
@@ -392,8 +421,8 @@ export default class Archsport extends Extension {
                 if (incoming) {
                     eventLabel.opacity = 0;
                     eventLabel.translation_y = 7;
-                    eventLabel.ease({opacity: 255, translation_y: 0,
-                    duration: this._interface.get_boolean('enable-animations') ? 220 : 0,
+                eventLabel.ease({opacity: 255, translation_y: 0,
+                    duration: this._interface.get_boolean('enable-animations') ? 190 : 0,
                         mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
                 }
                 expandedBody.add_child(eventLabel);

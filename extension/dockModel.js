@@ -1,5 +1,5 @@
 // Pure geometry shared by the native dock, web preview, and Node checks.
-export const DOCK_PROTOCOL = 3;
+export const DOCK_PROTOCOL = 4;
 
 export function buttonNumber(result) {
     if (Array.isArray(result)) return result[1] ?? 0;
@@ -53,7 +53,7 @@ export function dispatchOutsideDismiss(input, onDismiss, surface = {}) {
     return true;
 }
 
-export function layoutNotches(entries, monitor, gap = 8, margin = 12) {
+export function layoutNotches(entries, monitor, gap = 6, margin = 12) {
     const available = Math.max(1, monitor.width - margin * 2);
     const items = entries.map(entry => ({...entry,
         width: Math.min(Math.max(1, entry.width), available), fallback: false,

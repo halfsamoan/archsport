@@ -6,13 +6,13 @@ import {calculateExpandedViewport} from '../extension/uiModel.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from '../extension/alertQueue.js';
 
 test('sport and memory notches share a centered row', () => {
-    assert.equal(DOCK_PROTOCOL, 3);
+    assert.equal(DOCK_PROTOCOL, 4);
     const [sport, memory] = layoutNotches([
         {id: 'archsport', width: 360, order: 0},
         {id: 'matci', width: 220, order: 1},
     ], {x: 0, y: 0, width: 1728, panelHeight: 32});
-    assert.equal(memory.x - sport.x - sport.width, 8);
-    assert.equal(sport.x + (sport.width + memory.width + 8) / 2, 864);
+    assert.equal(memory.x - sport.x - sport.width, 6);
+    assert.equal(sport.x + (sport.width + memory.width + 6) / 2, 864);
     assert.equal(sport.y, 32);
 });
 
