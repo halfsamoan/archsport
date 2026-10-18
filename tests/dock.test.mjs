@@ -2,7 +2,17 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
     classifyOutsideSurface, dispatchOutsideDismiss} from '../extension/dockModel.js';
-import {calculateExpandedViewport} from '../extension/uiModel.js';
+import {calculateExpandedViewport, scoreDirection} from '../extension/uiModel.js';
+
+test('score event celebrates only a verified watched-team increase', () => {
+    const previous = {id: 'm1', home: 'Barcelona', away: 'Opponent', home_score: 1, away_score: 1,
+        team_keys: ['barcelona', 'opponent']};
+    assert.equal(scoreDirection(previous, {...previous, home_score: 2}, ['Barcelona']), 'watched');
+    assert.equal(scoreDirection(previous, {...previous, away_score: 2}, ['Barcelona']), 'opponent');
+    assert.equal(scoreDirection(previous, {...previous, home_score: 2, away_score: 2}, ['Barcelona']), 'unknown');
+    assert.equal(scoreDirection(previous, {...previous, id: 'm2', home_score: 2}, ['Barcelona']), 'unknown');
+    assert.equal(scoreDirection(previous, {...previous, home_score: null}, ['Barcelona']), 'unknown');
+});
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from '../extension/alertQueue.js';
 
 test('sport and memory notches share a centered row', () => {

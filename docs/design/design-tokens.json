@@ -1,0 +1,75 @@
+{
+  "spacing": {
+    "xxs": 2,
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "between": 20
+  },
+  "radius": {
+    "surface": 28,
+    "control": 12
+  },
+  "color": {
+    "surfacePrimary": "#111214",
+    "surfaceElevated": "#23252a",
+    "labelPrimary": "#f5f5f7",
+    "labelSecondary": "#b5b7be",
+    "labelTertiary": "#a8abb2",
+    "separatorSubtle": "rgba(255, 255, 255, 0.07)",
+    "focus": "#8ab4ff",
+    "accentPositive": "#5dd879",
+    "accentWarning": "#ffb84d",
+    "accentCritical": "#ff5f56",
+    "surfaceHover": "#303238",
+    "surfacePressed": "#3a3c43",
+    "surfaceTrack": "#292b30",
+    "hoverWash": "rgba(255, 255, 255, 0.07)",
+    "pressedWash": "rgba(255, 255, 255, 0.12)",
+    "actionPrimary": "#006fe6",
+    "actionHover": "#0066d3",
+    "labelDisabled": "#838b97",
+    "surfacePrimaryLight": "#f7f7f9",
+    "surfaceElevatedLight": "#e9e9ed",
+    "labelPrimaryLight": "#18191c",
+    "labelSecondaryLight": "#4b4d54",
+    "labelTertiaryLight": "#62656d",
+    "hoverWashLight": "rgba(0, 0, 0, 0.06)",
+    "separatorLight": "rgba(0, 0, 0, 0.08)",
+    "accentWarningLight": "#8a4b00",
+    "accentCriticalLight": "#b42318",
+    "focusLight": "#0057b8"
+  },
+  "motion": {
+    "micro": 100,
+    "response": 160,
+    "expand": 260,
+    "collapse": 175,
+    "event": 210,
+    "expandMode": "EASE_OUT_QUART",
+    "collapseMode": "EASE_OUT_CUBIC"
+  },
+  "control": {
+    "icon": 16,
+    "size": 34,
+    "compactHeight": 46
+  },
+  "shadow": {
+    "surface": "0 14px 34px rgba(0, 0, 0, 0.36)"
+  },
+  "typography": {
+    "hero": 30,
+    "primary": 14,
+    "secondary": 12,
+    "caption": 11,
+    "compactScore": 18
+  },
+  "geometry": {
+    "archCompact": 220,
+    "archExpanded": 380,
+    "archContext": 440,
+    "matciExpanded": 440
+  }
+}

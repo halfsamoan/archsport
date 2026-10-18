@@ -1,56 +1,70 @@
 .archsport-notch {
     background-color: #111214;
     color: #f5f5f7;
-    border: 1px solid rgba(255, 255, 255, 0.11);
-    border-top-width: 0;
     border-radius: 0 0 28px 28px;
-    padding: 6px 18px 8px;
-    spacing: 9px;
-    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.42);
+    padding: 8px 16px 8px;
+    spacing: 8px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.36);
 }
-.archsport-notch.archsport-open { padding: 14px 20px 17px; spacing: 12px; }
-.archsport-notch:focus { border-color: rgba(10, 132, 255, 0.68); }
-.archsport-compact { spacing: 10px; min-height: 36px; }
+.archsport-notch.archsport-open { padding: 16px 20px 16px; spacing: 12px; }
+.archsport-compact { spacing: 8px; min-height: 36px; }
 .archsport-compact-button { height: 36px; padding: 0 12px; border-radius: 18px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: rgba(255, 255, 255, 0.07); }
 .archsport-compact-button:active { background-color: rgba(255, 255, 255, 0.12); }
-.archsport-compact-button:focus { box-shadow: inset 0 0 0 2px rgba(10, 132, 255, 0.82); }
-.archsport-live { color: #ff453a; font-size: 12px; font-weight: 600; }
-.archsport-alert { color: #ff9f0a; font-size: 12px; font-weight: 600; }
-.archsport-live-dot { color: #ff453a; }
-.archsport-team { color: #f5f5f7; font-weight: 700; font-size: 15px; }
-.archsport-team-name { color: #e5e5ea; font-size: 12px; font-weight: 600; }
-.archsport-score { color: #fff; font-size: 30px; font-weight: 700; }
+.archsport-compact-button:focus { box-shadow: inset 0 0 0 2px #8ab4ff; }
+.archsport-live { color: #b5b7be; font-size: 12px; font-weight: 600; }
+.archsport-event-title { color: #f5f5f7; font-size: 14px; font-weight: 600; }
+.archsport-alert { color: #ffb84d; font-size: 12px; font-weight: 600; }
+.archsport-team { min-width: 70px; color: #f5f5f7; font-weight: 600; font-size: 18px; }
+.archsport-team-name { color: #f5f5f7; font-size: 12px; font-weight: 600; }
+.archsport-score { min-width: 100px; color: #f5f5f7; font-size: 30px; font-weight: 600; }
 .archsport-caption { color: #a8abb2; font-size: 12px; }
 .archsport-event { color: #f5f5f7; font-size: 13px; font-weight: 600; }
 .archsport-header, .archsport-identity, .archsport-tools, .archsport-scoreboard,
 .archsport-side, .archsport-context-row, .archsport-section-title,
-.archsport-fixture-row, .archsport-stats, .archsport-state-live,
-.archsport-state-stale, .archsport-state-idle { spacing: 9px; }
+.archsport-fixture-row, .archsport-stats { spacing: 8px; }
 .archsport-body { spacing: 8px; }
 .archsport-scroll { min-height: 0; border-radius: 12px; }
 .archsport-scroll StScrollBar { -slider-width: 4px; }
 .archsport-header { min-height: 34px; }
 .archsport-identity { spacing: 8px; }
 .archsport-brand { color: #f5f5f7; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
-.archsport-icon-button { width: 34px; height: 34px; color: #e5e5ea; border-radius: 17px; background-color: #23252a; }
+.archsport-icon-button { width: 34px; height: 34px; color: #f5f5f7; border-radius: 17px; background-color: #23252a; }
 .archsport-icon-button:hover { background-color: #303238; }
 .archsport-icon-button:active { background-color: #3a3c43; }
-.archsport-icon-button:focus { box-shadow: inset 0 0 0 2px #0a84ff; }
-.archsport-scoreboard { min-height: 72px; spacing: 22px; }
+.archsport-icon-button:focus { box-shadow: inset 0 0 0 2px #8ab4ff; }
+.archsport-scoreboard { min-height: 72px; spacing: 24px; }
 .archsport-side { spacing: 8px; }
 .archsport-context-row { min-height: 30px; padding: 2px 0; }
-.archsport-context-row StIcon { color: #8ec5ff; }
-.archsport-context-text { color: #ededf0; font-size: 12px; }
+.archsport-context-row StIcon { color: #a8abb2; }
+.archsport-context-text { color: #f5f5f7; font-size: 12px; }
 .archsport-section-title { min-height: 24px; color: #a8abb2; }
-.archsport-section-title StIcon { color: #8c9098; }
-.archsport-count { color: #d2d2d7; background-color: #25272c; border-radius: 9px; padding: 2px 7px; font-size: 10px; }
-.archsport-empty { min-height: 36px; spacing: 9px; color: #a8abb2; }
-.archsport-empty StIcon { color: #8ec5ff; }
-.archsport-date { min-width: 58px; color: #a1a4ab; font-size: 12px; }
+.archsport-section-title StIcon { color: #a8abb2; }
+.archsport-count { color: #a8abb2; font-size: 11px; }
+.archsport-empty { min-height: 36px; spacing: 8px; color: #a8abb2; }
+.archsport-empty StIcon { color: #8ab4ff; }
+.archsport-date { min-width: 58px; color: #a8abb2; font-size: 12px; }
 .archsport-fixture-row { min-height: 22px; spacing: 8px; }
 .archsport-stats { min-height: 28px; spacing: 12px; }
-.archsport-stat { color: #d2d2d7; font-size: 12px; }
-.archsport-state-live StIcon { color: #ff453a; }
-.archsport-state-idle { color: #a8abb2; }
-.archsport-state-stale, .archsport-state-stale StIcon { color: #ff9f0a; }
+.archsport-stat { color: #b5b7be; font-size: 12px; }
+
+.archsport-context-toggle {
+    color: #b5b7be; font-size: 12px; font-weight: 500;
+    padding: 8px 0; background-color: transparent;
+}
+.archsport-context-toggle:hover { color: #f5f5f7; }
+.archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px #8ab4ff; }
+
+/* Expanded controls follow the GNOME light appearance; compact match activity stays dark. */
+.archsport-notch.archsport-light { background-color: #f7f7f9; color: #18191c; }
+.archsport-light .archsport-live, .archsport-light .archsport-caption,
+.archsport-light .archsport-date, .archsport-light .archsport-stat { color: #4b4d54; }
+.archsport-light .archsport-team-name, .archsport-light .archsport-score,
+.archsport-light .archsport-event, .archsport-light .archsport-context-text { color: #18191c; }
+.archsport-light .archsport-icon-button { color: #18191c; background-color: #e9e9ed; }
+.archsport-light .archsport-icon-button:hover { background-color: rgba(0, 0, 0, 0.08); }
+.archsport-light .archsport-context-toggle { color: #4b4d54; }
+.archsport-light .archsport-context-toggle:hover { color: #18191c; }
+.archsport-light .archsport-alert { color: #8a4b00; }
+.archsport-light .archsport-icon-button:focus, .archsport-light .archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px #0057b8; }
+.archsport-light .archsport-event-title { color: #18191c; }

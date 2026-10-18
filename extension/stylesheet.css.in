@@ -1,0 +1,70 @@
+.archsport-notch {
+    background-color: {{color.surfacePrimary}};
+    color: {{color.labelPrimary}};
+    border-radius: 0 0 {{radius.surface}}px {{radius.surface}}px;
+    padding: {{spacing.sm}}px {{spacing.lg}}px {{spacing.sm}}px;
+    spacing: {{spacing.sm}}px;
+    box-shadow: {{shadow.surface}};
+}
+.archsport-notch.archsport-open { padding: {{spacing.lg}}px {{spacing.between}}px {{spacing.lg}}px; spacing: {{spacing.md}}px; }
+.archsport-compact { spacing: {{spacing.sm}}px; min-height: 36px; }
+.archsport-compact-button { height: 36px; padding: 0 12px; border-radius: 18px; background-color: transparent; }
+.archsport-compact-button:hover { background-color: {{color.separatorSubtle}}; }
+.archsport-compact-button:active { background-color: {{color.pressedWash}}; }
+.archsport-compact-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
+.archsport-live { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; font-weight: 600; }
+.archsport-event-title { color: {{color.labelPrimary}}; font-size: {{typography.primary}}px; font-weight: 600; }
+.archsport-alert { color: {{color.accentWarning}}; font-size: {{typography.secondary}}px; font-weight: 600; }
+.archsport-team { min-width: 70px; color: {{color.labelPrimary}}; font-weight: 600; font-size: {{typography.compactScore}}px; }
+.archsport-team-name { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; font-weight: 600; }
+.archsport-score { min-width: 100px; color: {{color.labelPrimary}}; font-size: {{typography.hero}}px; font-weight: 600; }
+.archsport-caption { color: {{color.labelTertiary}}; font-size: {{typography.secondary}}px; }
+.archsport-event { color: {{color.labelPrimary}}; font-size: 13px; font-weight: 600; }
+.archsport-header, .archsport-identity, .archsport-tools, .archsport-scoreboard,
+.archsport-side, .archsport-context-row, .archsport-section-title,
+.archsport-fixture-row, .archsport-stats { spacing: {{spacing.sm}}px; }
+.archsport-body { spacing: 8px; }
+.archsport-scroll { min-height: 0; border-radius: 12px; }
+.archsport-scroll StScrollBar { -slider-width: 4px; }
+.archsport-header { min-height: 34px; }
+.archsport-identity { spacing: 8px; }
+.archsport-brand { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; font-weight: 700; letter-spacing: 0.02em; }
+.archsport-icon-button { width: {{control.size}}px; height: {{control.size}}px; color: {{color.labelPrimary}}; border-radius: 17px; background-color: {{color.surfaceElevated}}; }
+.archsport-icon-button:hover { background-color: {{color.surfaceHover}}; }
+.archsport-icon-button:active { background-color: {{color.surfacePressed}}; }
+.archsport-icon-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
+.archsport-scoreboard { min-height: 72px; spacing: {{spacing.xl}}px; }
+.archsport-side { spacing: 8px; }
+.archsport-context-row { min-height: 30px; padding: 2px 0; }
+.archsport-context-row StIcon { color: {{color.labelTertiary}}; }
+.archsport-context-text { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; }
+.archsport-section-title { min-height: 24px; color: {{color.labelTertiary}}; }
+.archsport-section-title StIcon { color: {{color.labelTertiary}}; }
+.archsport-count { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
+.archsport-empty { min-height: 36px; spacing: {{spacing.sm}}px; color: {{color.labelTertiary}}; }
+.archsport-empty StIcon { color: {{color.focus}}; }
+.archsport-date { min-width: 58px; color: {{color.labelTertiary}}; font-size: {{typography.secondary}}px; }
+.archsport-fixture-row { min-height: 22px; spacing: 8px; }
+.archsport-stats { min-height: 28px; spacing: {{spacing.md}}px; }
+.archsport-stat { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; }
+
+.archsport-context-toggle {
+    color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; font-weight: 500;
+    padding: {{spacing.sm}}px 0; background-color: transparent;
+}
+.archsport-context-toggle:hover { color: {{color.labelPrimary}}; }
+.archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
+
+/* Expanded controls follow the GNOME light appearance; compact match activity stays dark. */
+.archsport-notch.archsport-light { background-color: {{color.surfacePrimaryLight}}; color: {{color.labelPrimaryLight}}; }
+.archsport-light .archsport-live, .archsport-light .archsport-caption,
+.archsport-light .archsport-date, .archsport-light .archsport-stat { color: {{color.labelSecondaryLight}}; }
+.archsport-light .archsport-team-name, .archsport-light .archsport-score,
+.archsport-light .archsport-event, .archsport-light .archsport-context-text { color: {{color.labelPrimaryLight}}; }
+.archsport-light .archsport-icon-button { color: {{color.labelPrimaryLight}}; background-color: {{color.surfaceElevatedLight}}; }
+.archsport-light .archsport-icon-button:hover { background-color: {{color.separatorLight}}; }
+.archsport-light .archsport-context-toggle { color: {{color.labelSecondaryLight}}; }
+.archsport-light .archsport-context-toggle:hover { color: {{color.labelPrimaryLight}}; }
+.archsport-light .archsport-alert { color: {{color.accentWarningLight}}; }
+.archsport-light .archsport-icon-button:focus, .archsport-light .archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px {{color.focusLight}}; }
+.archsport-light .archsport-event-title { color: {{color.labelPrimaryLight}}; }
