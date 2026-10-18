@@ -16,6 +16,7 @@ class Worker:
         self.errors = 0
         self.latest_matches = {}
         self.latest_seen = {}
+        self.last_interval = None
         seen_values = []
         if config['mode'] == 'live':
             for match, seen in store.latest_all():
@@ -28,12 +29,18 @@ class Worker:
                 seen_values.append(seen)
         self.last_success = datetime.fromtimestamp(max(seen_values), timezone.utc).isoformat() if seen_values else None
 
-    def _recent_success(self, now, max_age=300):
+    def _poll_window_seconds(self):
+        return max(300, min(600, int(self.config.get('poll_seconds', 300))))
+
+    def _stale_after_seconds(self):
+        return max(300, 2 * self._poll_window_seconds() + 60)
+
+    def _recent_success(self, now, max_age=None):
         if not self.last_success:
             return False
         try:
             age = now.timestamp() - datetime.fromisoformat(self.last_success).timestamp()
-            return 0 <= age <= max_age
+            return 0 <= age <= (self._stale_after_seconds() if max_age is None else max_age)
         except (TypeError, ValueError, OverflowError):
             return False
 
@@ -61,7 +68,10 @@ class Worker:
                     match = self.logos.decorate(match)
                 self.latest_matches[match['id']] = match
                 self.latest_seen[match['id']] = now.timestamp()
-                alert = self.store.ingest(match, now.timestamp(), suppress=self.first)
+                previous_interval = min(600, int(self.last_interval or self._poll_window_seconds()))
+                max_gap = max(120, 2 * previous_interval + 60)
+                alert = self.store.ingest(match, now.timestamp(), suppress=self.first,
+                                          max_gap_seconds=max_gap)
                 active.append((match, alert))
             if isinstance(context, dict) and self.logos:
                 for match in context.get('live_matches', []):
@@ -70,6 +80,8 @@ class Worker:
             alert_pair = next((pair for pair in active if pair[1]), None)
             if alert_pair:
                 selected, event_alert = alert_pair
+                event_alert['match_id'] = selected['id']
+                event_alert['kickoff_utc'] = selected.get('kickoff_utc')
             elif active:
                 selected = active[0][0]
             self.first, self.errors = False, 0
@@ -105,6 +117,7 @@ class Worker:
                        'visible': match_visible(selected, now) or bool(kickoff_alert),
                        'message': message,
                        'next_poll_seconds': interval,
+                       'stale_after_seconds': self._stale_after_seconds(),
                        'context': context}
         except (ProviderError, KeyError, TypeError, ValueError, OSError) as exc:
             self.errors += 1
@@ -120,20 +133,23 @@ class Worker:
             latest_id = max(self.latest_matches,
                             key=lambda identifier: self.latest_seen.get(identifier, 0), default=None)
             latest = self.latest_matches.get(latest_id) if latest_id is not None else None
-            fresh_match = latest and now.timestamp() - self.latest_seen.get(latest_id, 0) <= 300
+            stale_after = self._stale_after_seconds()
+            fresh_match = latest and now.timestamp() - self.latest_seen.get(latest_id, 0) <= stale_after
             if fresh_match:
                 selected = latest
             elif kickoff_alert:
                 selected = kickoff_match
             payload = {'mode': self.config['mode'], 'health': 'error', 'message': message,
                        'match': selected, 'alert': kickoff_alert, 'updated_at': self.last_success,
-                       'visible': (match_visible(selected, now) and self._recent_success(now)) or bool(kickoff_alert),
+                       'visible': (match_visible(selected, now) and self._recent_success(now, stale_after)) or bool(kickoff_alert),
                        'context': context,
+                       'stale_after_seconds': stale_after,
                        'next_poll_seconds': retry_seconds if retry_seconds is not None else
                        min(300, 30 * 2 ** min(self.errors - 1, 4))}
         if self.config['mode'] == 'demo':
             payload['next_poll_seconds'] = 4
             payload['visible'] = True
+        self.last_interval = payload.get('next_poll_seconds')
         return payload
 
     def _team_priority(self, match):

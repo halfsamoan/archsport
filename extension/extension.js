@@ -6,9 +6,8 @@ import Pango from 'gi://Pango';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {DockParticipant} from './notchDock.js';
-import {enqueuePendingAlert, takePendingAlert} from './dockModel.js';
+import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
 const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', 'poll-seconds', 'daily-budget', 'key-revision']);
 const STATUS = {live: '진행 중', halftime: 'HT', finished: 'FT', scheduled: '경기 전',
@@ -18,15 +17,17 @@ const STATUS = {live: '진행 중', halftime: 'HT', finished: 'FT', scheduled: '
 export default class Archsport extends Extension {
     enable() {
         this._enabled = true;
+        this._clearPendingRelogin();
         this._generation = 0;
         this._signals = [];
         this._timer = this._restartTimer = this._pendingAlertTimer = 0;
         this._failures = 0;
         this._expanded = false;
-        this._dockStateKey = null;
         this._sleeping = false;
         this._activeAlert = null;
+        this._alertAnimate = false;
         this._pendingAlerts = [];
+        this._pendingAlertRecord = this._readPendingAlertRecord();
         this._alertDeadline = 0;
         this._payload = {mode: 'live', health: 'loading', visible: false, message: '경기 정보 연결 중'};
         this._settings = this.getSettings();
@@ -38,13 +39,14 @@ export default class Archsport extends Extension {
             if (!this._dock.claim(100)) return;
             this._expanded = true;
             this._activeAlert = null;
+            this._alertAnimate = false;
             this._render();
             this._root.grab_key_focus();
         };
         this._root.connect('key-press-event', (_actor, event) => {
             const key = event.get_key_symbol();
             if (key === Clutter.KEY_Escape) {
-                this._expanded = false; this._activeAlert = null; this._render();
+                this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render();
                 return Clutter.EVENT_STOP;
             }
             if ([Clutter.KEY_Return, Clutter.KEY_space].includes(key)) {
@@ -52,7 +54,7 @@ export default class Archsport extends Extension {
             }
             return Clutter.EVENT_PROPAGATE;
         });
-        Main.layoutManager.addChrome(this._root, {affectsStruts: false, trackFullscreen: true});
+        Main.layoutManager.addChrome(this._root, {affectsStruts: false, trackFullscreen: false});
         const staleIndicator = Main.panel.statusArea[this.uuid];
         if (staleIndicator) {
             Main.panel.statusArea[this.uuid] = null;
@@ -68,7 +70,8 @@ export default class Archsport extends Extension {
         this._dock = new DockParticipant({id: this.uuid, actor: this._root,
             monitor: () => this._monitor(), order: 0, onYield: () => {
                 if (this._activeAlert) enqueuePendingAlert(this._pendingAlerts, this._activeAlert);
-                this._expanded = false; this._activeAlert = null;
+                this._persistPendingAlerts();
+                this._expanded = false; this._activeAlert = null; this._alertAnimate = false;
                 if (this._timer) GLib.source_remove(this._timer);
                 this._timer = 0;
                 this._render(); this._schedulePendingAlert();
@@ -85,7 +88,9 @@ export default class Archsport extends Extension {
                 if (this._settings.get_boolean('spoiler') || !this._settings.get_boolean('expand-on-event') ||
                     !this._settings.get_boolean('show-notch'))
                     this._pendingAlerts = [];
+                this._persistPendingAlerts();
                 this._activeAlert = null;
+                this._alertAnimate = false;
                 this._render();
                 this._showPendingAlert();
             }
@@ -104,11 +109,24 @@ export default class Archsport extends Extension {
         this._signals.push([object, object.connect(signal, callback)]);
     }
 
+    _clearPendingRelogin() {
+        const path = GLib.build_filenamev([GLib.get_user_state_dir(), 'archsport', 'pending-relogin.json']);
+        try {
+            const [, contents] = Gio.File.new_for_path(path).load_contents(null);
+            const marker = JSON.parse(new TextDecoder().decode(contents));
+            if (Number(marker.installed) === Number(this.metadata.version))
+                Gio.File.new_for_path(path).delete(null);
+        } catch (_error) {
+            // Keep unmatched or unreadable markers for the next diagnostic run.
+        }
+    }
+
     _toggle() {
         const expanding = !this._expanded && !this._activeAlert;
         if (expanding && !this._dock.claim(100)) return;
         this._expanded = expanding;
         this._activeAlert = null;
+        this._alertAnimate = false;
         this._render();
         if (expanding) this._root.grab_key_focus();
     }
@@ -122,8 +140,9 @@ export default class Archsport extends Extension {
         if (!this._enabled || !this._dock) return;
         const match = this._payload.match;
         const updated = Date.parse(this._payload.updated_at ?? '');
+        const staleAfterMs = (this._payload.stale_after_seconds ?? 300) * 1000;
         const recentlyUpdated = Number.isFinite(updated) && Date.now() - updated >= -30000 &&
-            Date.now() - updated <= 300000;
+            Date.now() - updated <= staleAfterMs;
         const active = this._payload.visible !== false && recentlyUpdated &&
             (this._payload.mode === 'demo' && Boolean(match) ||
                 ['live', 'halftime', 'extra_time', 'penalties', 'interrupted'].includes(match?.status));
@@ -144,12 +163,7 @@ export default class Archsport extends Extension {
                 mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
         }
         this._indicator.visible = true;
-        const key = JSON.stringify([width, height, visible, monitor?.x, monitor?.y,
-            monitor?.width, monitor?.height, Main.panel.height]);
-        if (key !== this._dockStateKey) {
-            this._dockStateKey = key;
-            this._dock.update({width, height, visible, expanded: height > 46});
-        }
+        this._dock.update({width, height, visible, expanded: height > 46});
     }
 
     _label(text, style) {
@@ -192,11 +206,46 @@ export default class Archsport extends Extension {
         });
     }
 
+    _pendingAlertsPath() {
+        return GLib.build_filenamev([GLib.get_user_state_dir(), 'archsport', 'pending-alerts.json']);
+    }
+
+    _readPendingAlertRecord() {
+        try {
+            const file = Gio.File.new_for_path(this._pendingAlertsPath());
+            const [, bytes] = file.load_contents(null);
+            return JSON.parse(new TextDecoder().decode(bytes));
+        } catch (_error) {
+            return null;
+        }
+    }
+
+    _persistPendingAlerts() {
+        const path = this._pendingAlertsPath();
+        const file = Gio.File.new_for_path(path);
+        try {
+            if (!this._pendingAlerts.length) {
+                try { file.delete(null); } catch (_error) { /* already absent */ }
+                return;
+            }
+            GLib.mkdir_with_parents(GLib.path_get_dirname(path), 0o700);
+            const contents = JSON.stringify({alerts: this._pendingAlerts, saved_at: Date.now()});
+            file.replace_contents(new TextEncoder().encode(contents), null, false,
+                Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+            file.set_attribute_uint32('unix::mode', 0o600, Gio.FileQueryInfoFlags.NONE, null);
+        } catch (_error) {
+            // Persistence is best-effort; live presentation must keep working.
+        }
+    }
+
     _showPendingAlert() {
-        if (!this._enabled || !this._pendingAlerts.length || this._activeAlert) return;
+        if (!this._enabled) return;
+        if (expirePendingAlerts(this._pendingAlerts)) this._persistPendingAlerts();
+        if (!this._pendingAlerts.length || this._activeAlert) return;
         if (this._settings.get_boolean('spoiler') || !this._settings.get_boolean('expand-on-event') ||
             !this._settings.get_boolean('show-notch')) {
             this._pendingAlerts = [];
+            this._persistPendingAlerts();
             return;
         }
         const monitor = this._monitor();
@@ -206,11 +255,13 @@ export default class Archsport extends Extension {
             return;
         }
         const alert = takePendingAlert(this._pendingAlerts, () => this._dock.claim(80));
+        this._persistPendingAlerts();
         if (!alert) {
             this._schedulePendingAlert();
             return;
         }
         this._activeAlert = alert;
+        this._alertAnimate = true;
         this._alertDeadline = GLib.get_monotonic_time() / 1000 + this._settings.get_int('event-seconds') * 1000;
         this._render();
     }
@@ -220,10 +271,17 @@ export default class Archsport extends Extension {
         if (this._timer) { GLib.source_remove(this._timer); this._timer = 0; }
         const now = GLib.get_monotonic_time() / 1000;
         const spoiler = this._settings.get_boolean('spoiler');
-        if (spoiler || !this._settings.get_boolean('expand-on-event')) this._activeAlert = null;
-        else if (this._activeAlert && now >= this._alertDeadline) this._activeAlert = null;
+        if (spoiler || !this._settings.get_boolean('expand-on-event')) {
+            this._activeAlert = null;
+            this._alertAnimate = false;
+        } else if (this._activeAlert && now >= this._alertDeadline) {
+            this._activeAlert = null;
+            this._alertAnimate = false;
+        }
         const alert = this._activeAlert;
-        this._root.remove_all_children();
+        const incoming = this._alertAnimate ? alert : null;
+        this._alertAnimate = false;
+        for (const child of this._root.get_children()) child.destroy();
         const data = this._payload;
         const match = data.match;
         const score = spoiler ? '● : ●' : match ? `${match.home_score ?? '–'} : ${match.away_score ?? '–'}` : '– : –';
@@ -254,12 +312,13 @@ export default class Archsport extends Extension {
             const header = new St.BoxLayout({style_class: 'archsport-header'});
             const identity = new St.BoxLayout({style_class: 'archsport-identity'});
             identity.add_child(this._label('⚽', 'archsport-brand'));
-            identity.add_child(this._label(alert?.title || (data.mode === 'demo' ? '시연' : data.health === 'error' ? '오프라인' : clock || '경기 정보'),
+            identity.add_child(this._label(alert?.title || (data.mode === 'demo' ? '시연' : data.health === 'error' ?
+                (data.ui_version_mismatch ? data.message : '오프라인') : clock || '경기 정보'),
                 alert ? 'archsport-alert' : 'archsport-live'));
             header.add_child(identity);
             const tools = new St.BoxLayout({style_class: 'archsport-tools'});
             tools.add_child(this._iconButton('preferences-system-symbolic', '설정', () => this.openPreferences()));
-            tools.add_child(this._iconButton('pan-up-symbolic', '접기', () => { this._expanded = false; this._activeAlert = null; this._render(); }));
+            tools.add_child(this._iconButton('pan-up-symbolic', '접기', () => { this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render(); }));
             header.add_child(tools);
             this._root.add_child(header);
 
@@ -407,7 +466,7 @@ export default class Archsport extends Extension {
         this._visibility();
         this._root.accessible_name = `Archsport. ${match?.home ?? '축구'} ${score} ${match?.away ?? ''}. ${clock}`;
         if (alert) this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(1, Math.round(this._alertDeadline - now)), () => {
-            this._timer = 0; this._activeAlert = null; this._render(); this._showPendingAlert();
+            this._timer = 0; this._activeAlert = null; this._alertAnimate = false; this._render(); this._showPendingAlert();
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -425,7 +484,8 @@ export default class Archsport extends Extension {
                 '--watch-teams', this._settings.get_strv('watch-teams').join(','),
                 '--poll-seconds', String(this._settings.get_int('poll-seconds')),
                 '--daily-budget', String(this._settings.get_int('daily-budget')),
-                '--key-revision', String(this._settings.get_int('key-revision'))];
+                '--key-revision', String(this._settings.get_int('key-revision')),
+                '--ui-version', String(this.metadata.version)];
             if (this._settings.get_string('mode') === 'demo')
                 argv.push('--replay', GLib.build_filenamev([this.path, 'data', 'replay-barcelona.json']));
             this._process = launcher.spawnv(argv);
@@ -441,11 +501,19 @@ export default class Archsport extends Extension {
                 const [line] = source.read_line_finish_utf8(result);
                 if (line === null) { this._workerFailed(); return; }
                 this._payload = JSON.parse(line);
+                if (this._payload.ui_version_mismatch) this._payload.health = 'error';
                 this._failures = 0;
+                if (this._pendingAlertRecord) {
+                    this._pendingAlerts = restorePendingAlerts(this._pendingAlertRecord, this._payload);
+                    this._pendingAlertRecord = null;
+                    this._persistPendingAlerts();
+                }
                 const incoming = this._payload.alert;
                 if (incoming && !this._settings.get_boolean('spoiler') &&
-                    this._settings.get_boolean('expand-on-event') && this._settings.get_boolean('show-notch'))
+                    this._settings.get_boolean('expand-on-event') && this._settings.get_boolean('show-notch')) {
                     enqueuePendingAlert(this._pendingAlerts, incoming);
+                    this._persistPendingAlerts();
+                }
                 this._render();
                 this._showPendingAlert();
             } catch (_error) { this._workerFailed(); return; }
@@ -466,7 +534,9 @@ export default class Archsport extends Extension {
     _restartWorker(delay = 500) {
         this._stopWorker();
         if (this._activeAlert) enqueuePendingAlert(this._pendingAlerts, this._activeAlert);
+        this._persistPendingAlerts();
         this._activeAlert = null;
+        this._alertAnimate = false;
         if (this._timer) GLib.source_remove(this._timer);
         this._timer = 0;
         if (!this._enabled) return;
@@ -476,10 +546,12 @@ export default class Archsport extends Extension {
     }
 
     _workerFailed() {
-        this._payload = {...this._payload, health: 'error', message: '경기 서비스를 다시 시작합니다.'};
+        const alreadyRunning = this._payload.code === 'WORKER_ALREADY_RUNNING';
+        this._payload = {...this._payload, health: 'error',
+            message: alreadyRunning ? this._payload.message : '경기 서비스를 다시 시작합니다.'};
         this._render();
         this._failures++;
-        this._restartWorker(Math.min(60000, 5000 * 2 ** Math.min(this._failures - 1, 4)));
+        this._restartWorker(alreadyRunning ? 60000 : Math.min(60000, 5000 * 2 ** Math.min(this._failures - 1, 4)));
     }
 
     disable() {

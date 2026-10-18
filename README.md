@@ -1,26 +1,19 @@
 # Archsport
 
-**ASUS Vivobook 15 Pro · Ubuntu GNOME · FC Barcelona**를 위한 경기 알림 노치. 물리 노치 없이 GNOME 상단 패널 아래에 점수·골·VAR·HT·FT를 표시합니다.
+Barcelona, Lazio, Como의 축구 일정과 경기 중 점수·상태를 GNOME 상단 패널 아래 노치에 표시하는 Ubuntu용 GNOME 확장이다. 경기가 없으면 노치를 숨기며, 패널 메뉴에서 일정·최근 결과를 직접 열 수 있다.
 
-**Linux Codex에서 이어서 작업하려면 먼저 [docs/LINUX_HANDOFF.md](docs/LINUX_HANDOFF.md)를 읽으세요.** 원래 채팅이나 Windows Codex와 연결할 필요가 없습니다.
+**코드를 수정하기 전에 [Linux 인계서](docs/LINUX_HANDOFF.md)를 먼저 읽는다.** 두 앱의 설계·검증·미완료 항목은 [통합 구현 현황](docs/TWO_APP_IMPLEMENTATION_STATUS.md)에 정리했다.
 
-## 현재 구현
+## 데이터와 현재 범위
 
-- 실제 Barcelona/Inter 구단 로고 포함. 실제 상대 팀의 로고는 공급사 팀 ID로 받아 로컬 캐시.
-- 기본 **live** 모드. 키가 없으면 설정 필요 상태를 표시하며 가짜 경기로 대체하지 않음.
-- `fixtures`를 polling하고 점수·상태 변경 때만 `events` 요청. 사건 조회가 실패해도 새 점수는 유지.
-- Barcelona 팀 ID를 정확한 이름/국가로 자동 결정하고 SQLite에 캐싱.
-- 패널의 FCB 메뉴에서 다음 경기·최근 4경기 결과·가장 최근 경기 기본 스탯을 확인한다. 노치는 경기 중에만 자동 표시된다.
-- 경기 중 기본 120초(설정 60–300초) / 경기 없음 30분 / 경기 전 킥오프까지 15분 여유 / 종료 후 다음 경기 대기.
-- 중복·VAR·재시작·재연결 기준값 처리, 오프라인 캐시 복구.
-- `prefs.js + GSettings`: 팀·국가·데이터 모드·API 키·간격·예산·노치 표시·알림 시간·모니터·스포일러 설정.
-- subprocess 종료 시 자동 재시작, logind 절전/복귀 신호 처리.
-- matci와 함께 설치하면 패널 아래 중앙 그룹으로 배치하고, 한쪽을 펼칠 때 다른 노치를 접음. 실제 GNOME 동시 표시 검수는 진행 전.
-- Windows 브라우저용 노치/애니메이션 시제품과 오프라인 경기 replay.
+- [football-data.org](https://www.football-data.org/)는 La Liga, Serie A, Champions League 일정과 경기 결과를 제공한다. 일정은 6시간 캐시를 사용하며 공급사 데이터는 지연될 수 있다.
+- API-Football은 경기 시간대에 live 점수·상태를 확인하고 점수/상태 변화 때 이벤트를 조회한다. 두 API 키는 별도 설정한다.
+- 경기 중 poll 간격은 300–600초다. 진행 예정 경기가 없을 때는 일정 새로고침과 다음 킥오프에 맞춰 낮은 빈도로 대기한다. 무료 쿼터로 실시간 데이터나 알림을 보장하지 않는다.
+- 최근 경기의 점수와 일정은 표시한다. 경기별 통계와 선발 라인업은 현재 무료 키에서 사용 가능한 범위가 확인되지 않아 제품 기능으로 제공하지 않는다.
+- VAR 전용 알림은 제품 요구사항이 아니다. 데모에는 점수 정정 흐름이 남아 있어도 실기 합격 기준은 아니다.
+- 실제 GNOME 화면·입력·절전·다중 노치 수용 검사는 자동 테스트와 구분한다. 현재 상태는 통합 구현 현황과 `replica/verification.md`를 확인한다.
 
-개인 API 키를 설정창에 저장한 상태이나, 실제 경기 데이터·일정·스탯 응답은 아직 확인하지 않았습니다. GNOME Shell GUI·ASUS 실제 배율·절전은 실기기 검수가 필요합니다.
-
-## Ubuntu에서 시작
+## Ubuntu 설치 및 키 설정
 
 ```bash
 gh repo clone halfsamoan/archsport
@@ -29,68 +22,53 @@ python3 -m unittest discover -s tests -v
 python3 tools/doctor.py
 sudo apt install python3 libglib2.0-bin gnome-shell-extension-prefs
 python3 tools/install_extension.py
-```
-
-비공개 저장소라면 먼저 같은 GitHub 계정으로 `gh auth login`을 수행합니다. 설치 후 **로그아웃·로그인**하고:
-
-```bash
 gnome-extensions enable archsport@local
 gnome-extensions prefs archsport@local
 ```
 
-설정창에서 개인 API-Football 키를 입력하고 적용합니다. JSON 수정이나 확장 수동 재활성화 없이 적용됩니다. 키는 `$XDG_CONFIG_HOME/archsport/api-key` (기본 `~/.config/archsport/api-key`)에 0600 권한으로 저장하며 GitHub·GSettings·stdout에 넣지 않습니다. 구독·결제는 자동으로 하지 않습니다.
+설정의 **데이터** 항목에서 API-Football 키와 football-data.org 일정 키를 각각 입력하고 적용한다. 두 키는 `$XDG_CONFIG_HOME/archsport/api-key`와 `$XDG_CONFIG_HOME/archsport/football-data-token`에 `0600` 권한으로 저장되고, 상위 디렉터리는 `0700`으로 만든다. 적용하면 확장 worker가 다시 시작된다. 키 값은 GSettings, 로그, 저장소에 기록하지 않는다.
 
-`daily-budget=90`은 무료 요금제 보호 설정입니다. 진행 중 경기는 기본 120초 간격이며, 일정·최근 결과·통계 응답은 각각 로컬 DB에 캐시합니다. 무료 100회/일 안에서 하루 종일 경기를 추적할 수 있다고 보장하지는 않습니다. 설정에서 요청 상한과 갱신 간격을 조정할 수 있습니다. [공급사 요금](https://www.api-football.com/pricing)
+무료 API-Football 기본 할당량은 계정·요금제 정책에 따라 달라질 수 있다. Archsport 기본 요청 상한은 90회/일이며 경기 감시를 위한 간격은 최소 5분이다. 사용 전에 [공식 요금표](https://www.api-football.com/pricing)를 확인한다.
 
-지원 목표는 GNOME 46/50입니다. GNOME 42의 Ubuntu 22.04는 이 ESM 확장 대상이 아닙니다. 설치할 Ubuntu의 버전을 `gnome-shell --version`으로 확인하세요.
-
-업데이트는 실행 중인 확장을 백업한 뒤 교체합니다:
+## 업데이트
 
 ```bash
 git pull --ff-only
 python3 tools/install_extension.py --upgrade
+python3 tools/doctor.py
 ```
 
-설치 뒤 현재 세션에서 확장을 다시 켭니다:
+가능한 GNOME 환경에서는 `--upgrade`가 새 버전을 업데이트 staging 경로에 두고 현재 세션을 유지한다. 실제 활성 버전이 설치 버전과 다르면 doctor가 재로그인 적용 대기 상태를 표시한다. 확장 모듈을 이미 불러온 GNOME Shell은 실행 중인 GJS를 교체하지 않을 수 있다. 새 UI는 다음 GNOME 세션에서 확인한다. 현재 데스크톱 세션의 앱을 닫고 싶지 않다면 재로그인은 미루고, staging 상태를 유지한다. 직접 파일을 교체하는 `--direct` 옵션도 있지만 현재 세션의 코드 갱신을 보장하지 않는다.
 
-```bash
-gnome-extensions enable archsport@local
-```
+## 시연
 
-GNOME이 이미 불러온 확장은 다른 버전의 코드를 현재 세션에서 다시 읽지 않을 수 있습니다. `gnome-extensions info archsport@local`에서 설치한 버전이 보이지 않으면 다음 사용자 세션 진입 뒤 적용됩니다. 실제 재로그인 자동 시작도 별도 실기기 검수 항목입니다.
-
-## 키 없이 확인
+API 키 없이 Python에서 합성 경기 흐름을 확인한다.
 
 ```bash
 python3 -m archsport --demo --once
 python3 -m archsport --replay data/replay-barcelona.json
 ```
 
-GNOME 설정의 데이터 모드를 `시연`으로 선택하면 동봉된 가상 경기 흐름을 재생합니다. 실제 클럽 로고를 사용하지만 대진·점수·선수·시간은 시연입니다. 실데이터로 표기하지 않습니다.
+GNOME 설정에서 데이터 모드를 `시연`으로 바꾸면 같은 replay를 쓴다. 대진·점수·선수·시간은 합성 데이터다.
 
-## Windows에서 디자인 보기
+## 개발용 웹 시제품
 
 ```powershell
 python -m http.server 4173 --bind 127.0.0.1 --directory web
 ```
 
-<http://127.0.0.1:4173>에서 접힘·펼침·득점 알림·6초 후 접힘·상세·설정·오프라인을 확인합니다. 웹 설정은 브라우저 시연 전용이며 Ubuntu GSettings와 동기화되지 않습니다.
+<http://127.0.0.1:4173>에서 화면 시제품을 볼 수 있다. 웹 설정은 GNOME 설정과 동기화되지 않는다.
 
-![디자인 시제품](replica/design/reference-desktop.png)
+## 주요 파일
 
-## 파일 안내
-
-| 경로 | 내용 |
+| 경로 | 용도 |
 |---|---|
-| `docs/LINUX_HANDOFF.md` | Linux Codex 인계서·사용자 의도·P0 검수·작업 순서 |
-| `AGENTS.md` | 채팅 없이 적용할 저장소 작업 지침 |
-| `archsport/` | 데이터·상태·폴링·로고·JSON Lines worker |
-| `extension/` | GNOME Shell 표면·설정창·GSettings schema |
-| `web/` | Windows에서도 동작하는 UI 시제품·실제 팀 로고 |
-| `data/` | 가상 공급사 응답·전체 경기 replay·데이터 출처 안내 |
-| `replica/recon.md` | Apple Sports 원본 조사와 Linux 제안 |
-| `replica/features.csv` | 기능별 구현 및 검증 상태 |
-| `replica/architecture.md` | 현재 구조·요청량·IPC·후속 계획 |
-| `replica/verification.md` | 실제 실행한 검증과 미검증 구분 |
+| `archsport/` | 일정·live 공급자, polling, 상태와 캐시 |
+| `extension/` | GNOME Shell UI, Preferences, GSettings |
+| `tools/` | 설치·업데이트 staging·환경 진단 |
+| `docs/LINUX_HANDOFF.md` | 작업 인계와 실제 Ubuntu 검수 절차 |
+| `docs/TWO_APP_IMPLEMENTATION_STATUS.md` | Archsport·matci 전체 구현/검증 현황 |
+| `replica/features.csv` | 기능별 구현 상태 |
+| `replica/verification.md` | 수행한 검증과 아직 남은 실기 검사 |
 
-키·로컬 SQLite·쿠키·dconf·세션 파일은 공유하지 않습니다. 경기 데이터는 새 컴퓨터의 개인 키로 다시 수신합니다. 구단 마크의 권리는 각 권리자에게 있으며 출처와 원본 파일 해시는 `web/assets/logos/manifest.json`에 있습니다.
+구단 표장과 데이터 제공 범위는 각 권리자·공급사의 정책에 따른다. 개인 키, SQLite 상태, 세션 데이터, 진단 파일은 저장소에 포함하지 않는다.

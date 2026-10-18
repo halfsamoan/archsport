@@ -94,7 +94,7 @@ gnome-extensions prefs archsport@local
 설정창에서:
 
 1. 감시 팀에서 `Barcelona`, `Lazio`, `Como`를 선택한다.
-2. API-Football 키는 설정창에서 적용한다. football-data.org 일정 키는 설정 파일에 0600 권한으로 둔다.
+2. API-Football 키와 football-data.org 일정 키를 설정창의 비밀번호 입력란에서 각각 적용한다. 두 키는 `~/.config/archsport/api-key`, `~/.config/archsport/football-data-token`에 0600 권한으로 저장되고 적용 즉시 worker를 재시작한다.
 3. 모드는 `실제 경기`로 둔다.
 4. 경기 일정과 라이브 상태를 각각 확인한다. 진행 경기가 없으면 노치는 숨겨지고 2시간/15분 알림 또는 수동 일정 보기만 표시한다.
 5. 무료 API-Football 한도를 위해 라이브 조회 최소 간격은 5분이며 기본 일일 상한은 90회다.
@@ -160,7 +160,7 @@ python3 -m archsport --demo --once
 python3 -m archsport --replay data/replay-barcelona.json
 ```
 
-GNOME 설정에서 `시연`을 선택해도 같은 replay가 재생된다. 경기 전/시작/득점/VAR 취소/재득점/HT/오프라인/후반/득점/FT를 빠르게 확인한다. 선수는 `시연 선수`, 날짜는 가상이다. 5분 FT 정책은 빠른 replay가 아닌 scheduler 테스트와 실제 GNOME에서 따로 검증한다.
+GNOME 설정에서 `시연`을 선택해도 같은 replay가 재생된다. 경기 전/시작/득점/점수 정정/재득점/HT/오프라인/후반/득점/FT를 빠르게 확인한다. replay 안의 VAR frame은 점수 정정 시나리오 자료일 뿐 별도 VAR 알림 요구사항은 아니다. 선수는 `시연 선수`, 날짜는 가상이다. 5분 FT 정책은 빠른 replay가 아닌 scheduler 테스트와 실제 GNOME에서 따로 검증한다.
 
 Windows 프리뷰:
 
@@ -178,7 +178,7 @@ http://127.0.0.1:4173 에서 디자인을 확인한다. Windows에 있던 서버
 |---|---|---|---|
 | P0-01 | GNOME50 실제 enable/disable | 노치/설정창 표시, 시계·패널 클릭 유지 | 미검증 |
 | P0-02 | 실제 API·Barcelona ID | 올바른 팀/국가, 재시작 뒤 teams 호출 없음 | 미검증 |
-| P0-03 | 실제 goal/VAR/HT/FT | 골·정정·시간·상태 정확, 반복 알림 없음 | 미검증 |
+| P0-03 | 실제 goal/HT/FT | 골·점수 정정·시간·상태 정확, 반복 알림 없음. VAR 알림은 제품 요구사항과 합격 기준에서 제외 | 미검증 |
 | P0-04 | suspend→resume | 오래된 골 억제, worker 1개, 새 값 갱신 | 미검증 |
 | P0-05 | 인터넷 끊김→복구 | 마지막 정보와 오류 표시, 복구 baseline, 다음 골 알림 | 미검증 |
 | P0-06 | 배율 125%/150% | ASUS 화면에서 텍스트/로고 잘림·위치 이탈 없음 | 미검증 |

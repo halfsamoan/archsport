@@ -1,16 +1,8 @@
 // Pure geometry shared by the native dock, web preview, and Node checks.
+export const DOCK_PROTOCOL = 2;
+
 export function canClaim(active, id, priority) {
     return !active || active.id === id || priority >= active.priority;
-}
-
-export function enqueuePendingAlert(queue, alert) {
-    if (alert && !queue.some(item => JSON.stringify(item) === JSON.stringify(alert)))
-        queue.push(alert);
-}
-
-export function takePendingAlert(queue, claim) {
-    if (!queue.length || !claim()) return null;
-    return queue.shift();
 }
 
 export function layoutNotches(entries, monitor, gap = 8, margin = 12) {

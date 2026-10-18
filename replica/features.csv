@@ -29,7 +29,7 @@ Apple TV 시청 연결,apple,skip,conditional,skip,지역·서비스·구독에 
 노치 곡선과 마스킹,design,must,unknown,partial,웹 날개 곡선·둥근 밑면; GNOME 초기 라운드 표면,F028,proposal,S04,web/style.css; extension/stylesheet.css
 모션 감소,motion,must,unknown,partial,웹 미디어쿼리·토글; GNOME 시스템 설정 읽기,F029,proposal,S07,web/style.css; extension/extension.js
 골 알림 중복 억제,reliability,must,unknown,yes,SQLite 상태와 receipt; 단위 테스트 통과,F030,proposal,S06,archsport/engine.py
-VAR 점수 감소 정정,reliability,must,unknown,yes,점수 감소를 correction으로 분리; 개별 이벤트 revision은 후속,F031,proposal,S06,archsport/engine.py
+점수 감소 정정,reliability,must,unknown,yes,점수 감소를 correction으로 분리; VAR 전용 알림은 제품 요구사항에서 제외,F031,proposal,S06,archsport/engine.py
 절전 후 과거 골 재알림 억제,reliability,must,unknown,yes,120초 초과 공백 baseline; 단위 테스트 통과,F032,proposal,S08,archsport/engine.py
 API 오류 및 마지막 정보 표시,reliability,must,unknown,partial,키 오류·429·HTTP200 errors·예산 소진; GNOME 미실행,F033,proposal,S08,archsport/__main__.py
 요청 예산 제한,data,must,unknown,yes,실패 요청 포함 선예약; 날짜별 카운터 테스트,F034,D03,S07,archsport/engine.py

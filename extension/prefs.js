@@ -5,6 +5,17 @@ import Gtk from 'gi://Gtk?version=4.0';
 import Gdk from 'gi://Gdk?version=4.0';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
+function saveSecret(path, value) {
+    const directoryPath = GLib.path_get_dirname(path);
+    GLib.mkdir_with_parents(directoryPath, 0o700);
+    Gio.File.new_for_path(directoryPath).set_attribute_uint32('unix::mode', 0o700,
+        Gio.FileQueryInfoFlags.NONE, null);
+    const file = Gio.File.new_for_path(path);
+    file.replace_contents(new TextEncoder().encode(value.trim()), null, false,
+        Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+    file.set_attribute_uint32('unix::mode', 0o600, Gio.FileQueryInfoFlags.NONE, null);
+}
+
 export default class ArchsportPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
@@ -38,10 +49,7 @@ export default class ArchsportPreferences extends ExtensionPreferences {
         key.connect('apply', () => {
             if (!key.text.trim()) return;
             try {
-                GLib.mkdir_with_parents(GLib.path_get_dirname(keyPath), 0o700);
-                const file = Gio.File.new_for_path(keyPath);
-                file.replace_contents(new TextEncoder().encode(key.text.trim()), null, false, Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION, null);
-                file.set_attribute_uint32('unix::mode', 0o600, Gio.FileQueryInfoFlags.NONE, null);
+                saveSecret(keyPath, key.text);
                 key.text = '';
                 keyState.subtitle = '저장 완료 · 확장 기능에 바로 적용됨';
                 settings.set_int('key-revision', settings.get_int('key-revision') + 1);
@@ -50,7 +58,18 @@ export default class ArchsportPreferences extends ExtensionPreferences {
         data.add(key);
         data.add(keyState);
         const schedulePath = GLib.build_filenamev([GLib.get_user_config_dir(), 'archsport', 'football-data-token']);
-        const scheduleKeyState = new Adw.ActionRow({title: '일정 공급사 키', subtitle: GLib.file_test(schedulePath, GLib.FileTest.IS_REGULAR) ? 'football-data.org 키 저장됨' : 'football-data.org 키 파일 없음'});
+        const scheduleKey = new Adw.PasswordEntryRow({title: 'football-data.org 일정 키 · 입력 후 적용', show_apply_button: true});
+        const scheduleKeyState = new Adw.ActionRow({title: '일정 API 키', subtitle: GLib.file_test(schedulePath, GLib.FileTest.IS_REGULAR) ? '저장된 키 있음' : '아직 저장하지 않음'});
+        scheduleKey.connect('apply', () => {
+            if (!scheduleKey.text.trim()) return;
+            try {
+                saveSecret(schedulePath, scheduleKey.text);
+                scheduleKey.text = '';
+                scheduleKeyState.subtitle = '저장 완료 · 확장 기능에 바로 적용됨';
+                settings.set_int('key-revision', settings.get_int('key-revision') + 1);
+            } catch (_error) { scheduleKeyState.subtitle = '키 파일을 저장하지 못했습니다.'; }
+        });
+        data.add(scheduleKey);
         data.add(scheduleKeyState);
         const health = new Adw.ActionRow({title: '서비스 상태', subtitle: '상태 새로고침을 누르세요.'});
         const refresh = new Gtk.Button({label: '상태 새로고침', valign: Gtk.Align.CENTER});

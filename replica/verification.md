@@ -1,5 +1,16 @@
 # 검증 기록
 
+## 2026-10-19 worker·설정·설치 안정화
+
+- `python3 tools/dev.py --check-only`: 공유 dock byte 동일, Archsport Python 65/65 및 Node 6/6, matci Python 51/51 및 Node 22/22 통과. 양쪽 ESLint 오류 0, strict GSettings schema dry-run 통과. ESLint에는 사용하지 않는 예외 변수 등의 경고가 남아 있다.
+- Archsport GJS의 football-data.org 비밀번호 입력 UI는 API-Football 키와 같은 `Adw.PasswordEntryRow` 흐름을 사용한다. 저장 경로는 `~/.config/archsport/football-data-token`, 파일 권한 0600, 상위 폴더 0700이며 key-revision 변경으로 worker 재시작을 요청한다. GNOME Preferences 창에서 실제 입력은 아직 검수하지 않았다.
+- 점수/상태 알림에 match ID와 kickoff를 붙이고 대기열을 `XDG_STATE_HOME/archsport/pending-alerts.json`에 저장한다. 2시간 이내의 레코드 중 현재 경기 문맥에서 ID와 kickoff가 일치하는 항목만 복원한다. Node 복원 테스트에서 stale/future/다른 fixture/mismatched kickoff가 거부됐다.
+- 설치기는 Archsport v11, matci v8을 `extension-updates/`에 staging했다. doctor는 두 상태 marker와 `pending_relogin=true`, 각 worker 1개를 보고한다. 현재 Shell은 두 앱 모두 v7 `ACTIVE`다. 기존 GUI를 닫지 않도록 재로그인하지 않았으며, 새 UI가 현재 표시 중이라고 주장하지 않는다.
+- 중첩 GNOME 50.1 headless는 시작됐으나 감시 세션을 종료하는 동안 확장 callback과 St actor teardown이 경합해 GJS/GLib critical을 출력했다. 이를 UI 수용 통과로 세지 않는다. 메인 데스크톱은 변경하지 않았다.
+- VAR는 제품 acceptance 기준에서 제외했다. replay에 점수 정정 frame은 남아 있다. README와 인계서에는 팀 3개, football-data.org 일정, API-Football live, 300–600초 interval 및 무료 데이터의 통계/lineup 한계를 반영했다.
+- 최종 audit 보강: 재로그인 표식은 확장 시작 시 설치 버전과 일치할 때만 정리하고 doctor는 읽기 전용으로 남겼다. Archsport 대기 알림은 항목별 최초 시각으로 2시간 만료를 계산하며, 다른 노치나 overview가 표시를 막는 동안에도 큐에서 만료한다. matci doctor는 `/proc/locks`에서 worker lock을 수동 조회해 시작 동작을 방해하지 않으며, 설치 레이아웃의 metadata exact-version 테스트를 추가했다. 이 GJS 시작 동작과 노치 입력/포커스는 GNOME 화면에서 확인하지 않았다.
+- API-Football 공식 자료에서 `/fixtures?id=ID`가 lineups/events/statistics/player blocks를 주는 경로와 무료 100 requests/day를 확인했다. 무료 계정은 시즌 및 대회별 데이터 제한이 있고 데이터 availability도 달라진다. 사용자 키는 과거 2025시즌 요청이 거부됐으므로 Barcelona·Lazio·Como 실제 fixture에서 응답과 coverage를 확인하기 전까지 lineup/statistics는 미구현으로 둔다.
+
 ## 2026-10-18 Ubuntu 26.04.1 사용자 세션 적용
 
 - ASUS Vivobook M6500QC, GNOME Shell 50.1, Wayland, eDP-1 논리 1728×972를 확인했다.
@@ -64,7 +75,7 @@
 ## 미검증
 
 - GNOME 46/50에서 확장 설치·렌더링·enable/disable·잠금·전체화면·모니터 변경
-- 실제 API 키와 Barcelona 경기: 커버리지, 레이턴시, 오류, 골·VAR 알림
+- 실제 API 키와 대상 경기: lineup/statistics availability, 레이턴시, 오류, 골·점수 정정·HT/FT 흐름
 - ASUS 패널 실제 해상도/배율/주사율, 배터리·CPU·메모리·frame time
 - 완성 제품의 날짜별 일정, 다중 경기, 라인업·통계, OS 방해금지·야간 정책
 

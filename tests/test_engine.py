@@ -31,9 +31,13 @@ class EngineTests(unittest.TestCase):
         second = self.store.ingest(match(2), 90)
         self.assertNotEqual(first['fingerprint'], second['fingerprint'])
 
-    def test_suspend_does_not_replay(self):
+    def test_default_gap_rebaselines_after_120s(self):
         self.store.ingest(match(), 0)
         self.assertIsNone(self.store.ingest(match(4), 300))
+
+    def test_configured_poll_gap_allows_score_alert(self):
+        self.store.ingest(match(), 0)
+        self.assertEqual(self.store.ingest(match(2), 300, max_gap_seconds=660)['kind'], 'score')
 
     def test_null_is_not_zero_or_goal(self):
         self.store.ingest(match(None, None, 'scheduled'), 0)

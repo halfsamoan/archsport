@@ -9,10 +9,10 @@
 |---|---|---|
 | 역할 | Barcelona·Lazio·Como 축구 일정, 경기 중 점수·이벤트, 노치 알림 | 시스템 RAM·앱 메모리 관찰, 사용자가 고른 앱 창의 정상 닫기 요청 |
 | 구조 | GNOME Shell 확장 + Python worker + football-data.org 일정 + API-Football 라이브 | GNOME Shell 확장 + Python `/proc` worker + UID 범위 SQLite 기록 |
-| 소스 버전 | 10 | 7 |
-| 현재 GNOME 프로세스 | 디스크 v10; Shell이 보고하는 GJS v7 ACTIVE; 새 UI 렌더는 미검증 | v7 ACTIVE |
-| 자동 검증 | Python 51/51, Node 3/3, JS 구문·엄격 schema 검사 통과 | Python 42/42, Node 15/15, JS 구문·엄격 schema 검사 통과 |
-| 실기 범위 | football-data 일정 3개·최근 결과 5개, API-Football 라이브 경기 1개 수신 확인; GNOME v10 렌더/실제 알림은 미검증 | 현재 Ubuntu `/proc` smoke 통과; 실제 GUI 창 닫기와 두 노치 배치는 미검증 |
+| 소스 버전 | 11 | 8 |
+| 현재 GNOME 프로세스 | 소스 v11 staged; 설치 경로 v10; GJS v7 ACTIVE; worker 1개 | 소스 v8 staged; 설치 경로/GJS v7 ACTIVE; worker 1개 |
+| 자동 검증 | Python 65/65, Node 6/6, ESLint 오류 0, strict schema 통과 | Python 51/51, Node 22/22, ESLint 오류 0, strict schema 통과 |
+| 실기 범위 | football-data 일정 3개·최근 결과 5개, API-Football 라이브 경기 1개 수신 확인; 설치 경로 v10 화면과 실제 알림은 미검증. 현재 활성 GJS는 v7 | 현재 Ubuntu `/proc` smoke 통과; 실제 GUI 창 닫기와 두 노치 배치는 미검증 |
 
 두 코드는 별도 저장소다. Archsport는 `/home/k/workspace/arch/archsport`, matci는 `/home/k/workspace/arch/matci`에 있다. 두 앱은 Python worker나 SQLite를 공유하지 않는다. GNOME Shell의 작은 노치 배치 등록부만 공유한다.
 
@@ -22,6 +22,8 @@
 - 경기가 없을 때 Archsport 노치를 숨기고, 경기가 시작되거나 일회성 일정 알림이 있을 때만 표면에 표시한다. 사용자는 패널 메뉴에서 일정을 직접 열 수도 있다.
 - 2시간 전·15분 전 알림은 각 경기마다 한 번 기록한다.
 - 일정은 무료 football-data.org, 점수·시간·상태·이벤트는 API-Football로 나눴다. 내부 경기 식별자와 공급사 ID도 분리했다.
+- football-data.org 키도 Preferences의 비밀번호 입력란에서 저장할 수 있다. API-Football 키와 함께 `0600`으로 저장되고 변경 시 worker를 재시작한다.
+- VAR 알림은 사용자가 제외하기로 한 제품 요구사항이므로 acceptance test에서 제외한다. 데모의 점수 정정 frame/test는 유지한다.
 - matci는 관찰·검토 도구다. 앱 프로세스를 종료하거나 캐시를 지우지 않고, 사용자가 확정한 현재 창에 일반 닫기 요청만 보낸다.
 - 공유 화면 우선권은 matci 수동 검토 100, Archsport 경기 알림 80이다. 스포츠 알림이 matci 검토 중 도착하면 대기 후 표시한다.
 - 외부 코드 심사에서 발견한 matci 우선권 중 스포츠 알림 유실, 유휴 live polling의 무료 quota 낭비, 일정 공급사 장애 시 live 탐색 중단을 각각 알림 대기열, 경기 시간대 제한 polling, 장애·빈 일정의 30분 live fallback으로 보완하고 회귀 테스트를 추가했다.
@@ -68,7 +70,7 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 4. **내부 경기 ID:** `match:<home>:<away>:<UTC 날짜>` 형태로 구성한다. football-data.org 경기 ID와 API-Football fixture ID는 `source_ids`에 각각 보관한다. 양 공급사의 팀 방향과 킥오프가 20분 이내로 일치할 때 같은 경기로 연결한다.
 5. **라이브 탐색:** 라이브 worker는 경기와 관계없이 계속 질의하지 않는다. 알려진 킥오프 5분 전부터 킥오프 후 30분 사이에 `fixtures?live=all`을 탐색한다. 시작 뒤 라이브 경기가 확인되면 설정된 5~10분 간격으로 업데이트하고 마지막 라이브 응답이 사라진 뒤 15분간만 재확인한다. worker가 경기 시간 중 새로 켜지면 최근 4시간 안의 일정 경기에 대해 시작 시 한 번 확인한다. 일정 공급사가 오류를 반환하거나 일정 없이 시작한 경우에는 라이브 피드를 시작 시 한 번, 이후 30분 간격으로만 확인한다. 알려진 일정의 킥오프 구간은 이 장애 대기보다 우선한다. API-Football의 일일 요청 예산은 90회이며 초과 예약은 worker가 차단한다.
 6. **경기 이벤트:** 감시 팀의 live fixture만 정규화한다. 점수·상태가 바뀌면 API-Football fixture ID로 events를 한 번 요청한다. 이벤트 요청이 실패해도 새 점수는 저장하고 다음 변경 시 다시 상세를 시도한다. 첫 관측은 과거 골을 새 알림으로 오인하지 않도록 기준값만 저장한다.
-7. **알림·표시:** 2시간·15분 알림은 SQLite 영수증으로 중복을 막는다. 점수/상태 이벤트는 match snapshot과 fingerprint로 중복을 막는다. 스포츠 노치는 진행 경기가 있을 때만 보이고, 알림은 기본 6초 유지한다. 점수는 spoiler 설정으로 숨길 수 있다.
+7. **알림·표시:** 2시간·15분 알림은 SQLite 영수증으로 중복을 막는다. 점수/상태 이벤트는 match snapshot과 fingerprint로 중복을 막는다. 스포츠 노치는 진행 경기가 있을 때만 보이고, 알림은 기본 6초 유지한다. 현재 안정화 범위에는 spoiler 설정이 남아 있다. 명세의 spoiler 제거와 VAR UX 정리는 기능 안정화 뒤 별도 제품 정리 작업으로 미뤘다.
 
 ### 요청량과 제한
 
@@ -83,8 +85,8 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 
 - Archsport 접힌 상태는 클럽 문장/이름, 스코어와 분·상태를 한 줄로 보여준다. 펼친 상태는 경기 카드, 다음 경기, 최근 결과와 이벤트를 표시하며 일정은 달력 아이콘, 최근 결과는 기록 아이콘, 설정·접기는 접근성 이름이 있는 아이콘 버튼으로 제공한다.
 - 경기 상태가 없으면 노치를 숨기고 진행 중인 경기 또는 일회성 알림에서만 나타난다. 화면 너비에 따라 280px compact / 최대 520px expanded로 제한하고, 320ms cubic ease 크기 전환을 사용한다. overview, 잠금, 설정된 전체화면, 절전 때는 숨긴다.
-- 매치 이벤트는 득점 아이콘/상태와 짧은 자동 접힘으로 표시한다. spoiler 설정 시 점수·자동 확장 알림을 감춘다. data error는 offline 아이콘/문구로 구분한다.
-- 수동 펼침 중 matci가 우선권을 가지면 스포츠 알림은 재시도 대기한다. 대기열은 메모리에만 있으므로 Shell 재시작 시 보존되지 않는다. 코드는 아이콘·전환·우선권을 포함하지만 현재 Shell에서 새 GJS v10이 실제로 렌더되는지는 확인하지 못했다.
+- 매치 이벤트는 득점 아이콘/상태와 짧은 자동 접힘으로 표시한다. spoiler 설정 시 점수·자동 확장 알림을 감춘다. data error는 offline 아이콘/문구로 구분한다. spoiler 옵션은 후속 제품 정리 작업에서 제거 예정이다.
+- 수동 펼침 중 matci가 우선권을 가지면 스포츠 알림은 재시도 대기한다. 대기 알림은 `XDG_STATE_HOME/archsport/pending-alerts.json`에 저장하고, 최초 대기 시각 기준 2시간 이내이며 현재 payload의 경기 ID·킥오프가 일치하는 항목만 복원한다. 다른 노치·overview·fullscreen이 표시를 막는 동안에도 만료하며, 실제 GNOME Shell 재시작 후 표시 여부는 아직 기기에서 확인하지 않았다.
 
 ### 코드 지도
 
@@ -109,9 +111,9 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 |---|---|---|
 | 세 팀의 지원 리그·UCL 일정과 최근 결과 점수 | 구현·실 API 확인 | 무료 일정 응답은 지연될 수 있음 |
 | 경기 전 2시간/15분 알림 | 코드·단위 테스트 완료 | 장기간 실제 GNOME 알림 수신은 미검증 |
-| 라이브 점수·시간·상태 및 변경 이벤트 | 코드·실 API 응답 확인 | 실제 Como 라이브 fixture 한 건을 adapter에서 받음; 실제 득점/VAR 이벤트와 노치 화면은 별도 경기 때 확인 필요 |
-| 최근 경기 세부 통계 | 미구현 | football-data.org 무료 범위에 세부 스탯이 없다. 실제 사용 키로 API-Football 2025시즌 최근 경기 조회도 무료 season 제한 오류를 반환했다. 현재 최근 경기의 슈팅/점유율은 제공되지 않는다. |
-| 선발 lineup·라인업 발표 알림 | 미구현 | API-Football fixture ID와 무료 계정 권한을 실제 사전 경기에서 검증하지 못했다. |
+| 라이브 점수·시간·상태 및 변경 이벤트 | 코드·실 API 응답 확인 | 실제 Como 라이브 fixture 한 건을 adapter에서 받음; 실제 득점 이벤트와 노치 화면은 별도 경기 때 확인 필요. VAR 알림은 제품 요구사항에서 제외 |
+| 최근 경기 세부 통계 | 미구현 | API-Football은 fixture ID로 경기 통계를 제공하지만 competition·season coverage와 계정의 시즌 권한에 좌우된다. 현재 사용 키는 2025시즌 요청을 제한해 실제 경기 통계를 검증하지 못했다. |
+| 선발 lineup·라인업 발표 알림 | 구현 경로 확인, 미구현 | football-data 일정에서 날짜 후보를 찾고 API-Football `/fixtures?date=YYYY-MM-DD` 결과를 팀·UTC kickoff로 대조해 fixture ID를 얻은 뒤 `/fixtures?id=ID`로 lineups/events/statistics를 요청할 수 있다. 무료 플랜은 100 calls/day이고 시즌 권한 및 대회 coverage에 제한이 있어 현재 키에서 실제 경기 응답을 확인하기 전까지 제품 기능으로 완료 처리하지 않는다. [API-Football fixture 안내](https://www.api-football.com/news/post/fifa-world-cup-2026-guide-to-using-data-with-api-sports), [요금제](https://www.api-football.com/pricing/), [coverage](https://www.api-football.com/coverage) |
 | 국내 컵 일정 | 미구현 | 무료 football-data.org coverage에 확실히 포함되지 않는다. 제안에 있던 ESPN endpoint는 비공식이라 제품 의존성으로 추가하지 않았다. |
 | 네트워크 복구·요금 제한·캐시 fallback | 구현·모의 응답 테스트 완료 | GNOME 알림 UI까지 실기 재연은 미완료 |
 
@@ -168,13 +170,14 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 | 앱별 PSS/RSS 표시 | 부분 관측으로 설계 | Shell app↔PID mapping 정확도는 앱별 편차가 남음 |
 | 안전 승인 뒤 정상 창 닫기 | Node 통합 테스트 통과 | 실제 unsaved dialog, 창 거부, 앱 background process는 미검증 |
 | 자동 메모리 제안 | opt-in 코드 | 실제 화면·오탐률 장시간 검수 미실시 |
-| CPU/GPU/swap 전용 화면, 파일/폴더 정리, package 제거, 브라우저 탭 통합 | 미구현 | 현재 제품에 포함되지 않음 |
+| 시스템 CPU, swap, GPU 사용률·온도 수집/화면 | 미구현 | 최종 제품 명세의 후속 P1. 현재 process CPU만 관측하며 `/proc/meminfo` 전체 swap과 하드웨어 provider는 없음 |
+| 파일/폴더 정리, package 제거, 브라우저 탭 통합 | 미구현 | 별도 후속 제품 범위 |
 
 ## 공유 노치 동작
 
 - 양 확장은 서로 다른 Python worker와 저장소를 유지한다. GNOME Shell `Main.layoutManager`에 버전이 붙은 작은 registry 하나를 두어 actor의 화면 위치와 현재 조작 권한만 공유한다.
 - 노치는 상단 패널 아래 `addChrome(..., {affectsStruts:false})`로 배치한다. registry는 두 노치를 가운데에 8 logical px 간격으로 두고, 화면이 좁아지면 수동으로 연 화면을 우선하고 나머지를 숨기는 정책을 계산한다.
-- matci는 사용자가 상세 화면을 열 때 우선순위 100, Archsport 경기 알림은 80이다. Archsport는 우선순위를 빼앗지 않고 메모리 검토가 끝날 때까지 알림을 대기시킨다. 대기 queue는 현재 GNOME 확장 메모리에 있어 Shell을 다시 시작하면 아직 안 보인 알림은 복구되지 않는다.
+- matci는 사용자가 상세 화면을 열 때 우선순위 100, Archsport 경기 알림은 80이다. Archsport는 우선순위를 빼앗지 않고 메모리 검토가 끝날 때까지 알림을 대기시킨다. 유효한 sports 대기 알림은 사용자 상태 디렉터리에 저장되며 fixture 문맥이 일치하지 않으면 복원하지 않는다.
 - 자동 geometry·priority는 Node 단위 검사로 확인했다. 하지만 GNOME 50 실 화면에서 클릭 hit-test, 패널 메뉴, 125/150% 배율, 전체화면, 좁은 창 충돌은 검수되지 않았다. 스크린샷은 디자인 참고 근거지 새 버전의 실행 증거가 아니다.
 
 ## 설정·데이터 위치
@@ -199,13 +202,13 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 
 | 저장소 | 검사 | 결과 |
 |---|---|---|
-| Archsport | `python3 -m unittest discover -s tests -v` | 51/51 통과 |
-| Archsport | `node --test tests/*.test.mjs` | 3/3 통과: 노치 배치, 수동 우선권, 거절된 이벤트의 대기/재시도 |
+| Archsport | `python3 -m unittest discover -s tests -v` | 65/65 통과 |
+| Archsport | `node --test tests/dock.test.mjs` | 6/6 통과: 노치 배치, 수동 우선권, 알림 대기·만료·복원 |
 | Archsport | `node --check extension/extension.js`, `prefs.js` | 통과 |
 | Archsport | `glib-compile-schemas --strict --dry-run extension/schemas` | 통과 |
 | Archsport | `git diff --check` | 통과 |
-| matci | `python3 -m unittest discover -s tests -v` | 42/42 통과 |
-| matci | `node --test tests/*.test.mjs` | 15/15 통과 |
+| matci | `python3 -m unittest discover -s tests -v` | 51/51 통과 |
+| matci | `node --test tests/dock.test.mjs tests/native-actions.test.mjs tests/native-worker.integration.test.mjs` | 22/22 통과 |
 | matci | GJS/prefs 구문 검사와 strict schema dry-run | 통과 |
 | matci | `python3 tools/smoke_worker.py` | live `/proc` 179 processes, memory valid, PSI available; GNOME runtime 아님 |
 
@@ -221,15 +224,15 @@ Node 검사 경고는 `.js` 파일이 Node package의 `type=module`로 선언되
 
 ## 설치·현재 세션 상태
 
-검사 시점에는 GNOME Shell 50.1 / Wayland다. Archsport source와 사용자 디스크 설치본은 v10이다. 업그레이드 설치는 이전 디스크본을 `~/.local/state/archsport/backups/`에 보관했다. 확장을 껐다 켰으며 `gnome-extensions info`는 여전히 캐시에 남은 v7 GJS를 `ACTIVE`로 보고한다. Python worker는 설치된 v10 package에서 재시작되어 일정 3개·최근 결과 5개를 health 파일에 기록했다. 즉 worker는 v10, 현재 노치 UI는 이전 v7 상태로 분리해서 기록한다. matci source/디스크/실행 중 Shell은 모두 v7, `ACTIVE`이고 각 앱 worker 한 개가 관측됐다.
+2026-10-19 기준 GNOME Shell 50.1 / Wayland다. Archsport v11과 matci v8은 각각 `gnome-shell/extension-updates/<UUID>`에 staging했고, 이전 설치를 state backup에 보관했다. `pending-relogin.json` 두 개가 mode 0600이며 doctor는 양쪽 모두 `pending_relogin=true`를 보고한다. 기존 설치 경로는 Archsport v10, matci v7이고 현 Shell은 둘 다 v7 `ACTIVE`; worker는 각각 1개다. staging은 활성 세션을 변경하지 않았다.
 
-로그아웃이나 Shell 재시작 없이 파일 배치와 Python worker까지 업데이트했다. GNOME이 새 GJS 코드를 읽으려면 다음 GNOME 세션 시작 때 v10 화면 검수가 필요하다. 현재 열린 데스크톱 창을 닫거나 로그아웃하지 않았다. 실제 화면에 새 버전이 보인다고는 기록하지 않는다.
+사용자가 로그아웃하면 열린 데스크톱 앱이 종료된다고 밝혔으므로 실제 GNOME 세션 재시작은 하지 않았다. 다음 로그인 때 GNOME이 v11/v8을 적용한 뒤 화면·입력 수용 검수가 필요하다. 현재 화면이 새 버전이라고 기록하지 않는다.
 
 ## 미완료·위험과 다음 작업
 
 | 우선순위 | 미완료 항목 | 완료 증거 |
 |---|---|---|
-| P0 | Archsport v10 및 두 앱을 GNOME Shell 50.1에서 실제 화면/입력으로 검수 | 양 확장 source hash와 ACTIVE 버전, worker 수, 노치/일정/경기 상태 스크린샷, 오류 로그 확인 |
+| P0 | staged Archsport v11·matci v8을 GNOME Shell 50.1에서 실제 화면/입력으로 검수 | 다음 Shell 시작 후 양 확장 source hash와 ACTIVE 버전, worker 수, 노치/일정/경기 상태 스크린샷, 오류 로그 확인 |
 | P0 | matci 일반 창 닫기 실제 동작 | 저장하지 않은 대화상자 취소, 창 거부, 창 닫힘, background process 잔존을 Ubuntu에서 직접 확인 |
 | P1 | 경기 알림 priority queue 실기 | matci를 수동으로 연 동안 골/킥오프 알림 발생 후 matci 닫은 뒤 Archsport가 표시되는지 확인 |
 | P1 | 지난 경기 세부 스탯 | football-data.org 무료 데이터는 점수까지만 제공하고 실제 API-Football key는 2025시즌 fixture 조회를 거절했다. 현재 무료 key가 허용하는 시즌 범위를 확인하거나 다른 사용 허가된 공급원을 확보해야 구현 가능 |
@@ -237,7 +240,8 @@ Node 검사 경고는 `.js` 파일이 Node package의 `type=module`로 선언되
 | P1 | 실제 lineup/선발 알림 | 경기 일정 ID와 API-Football fixture ID를 연결하고 무료 계정의 `/fixtures/lineups` 권한 확인. 현재 미구현 |
 | P2 | domestic cup 일정 fallback | 공급사의 이용 조건/쿼터/안정성을 먼저 검토. ESPN 비공식 endpoint는 현재 배제 |
 | P2 | 고배율·화면 잠금·절전·전체화면·모니터 변경 | ASUS 실기 GNOME 50.1에서 표준 수동 절차 수행 |
-| P2 | sports pending queue의 Shell restart 지속성 | 현재 queue는 메모리 상태라 Shell 종료 중 수신 알림을 재생하지 못함. 필요하면 명시적 acknowledgement 저장 설계 추가 |
+| P1 | matci 수동 검토 중 sports 알림 대기·복원 GNOME 검수 | 두 노치 수동 조작, Shell 재시작, fixture 문맥이 유효한 알림의 1회 표시를 GNOME 50.1에서 확인 |
+| P1 | matci 전체 CPU·swap·GPU 사용률·온도 | 최종 제품 명세에 포함됐지만 native snapshot/provider/UI에 미구현. 별도 제품 작업 필요 |
 
 테스트 통과는 이 표의 GNOME 기기 수용 검사를 완료했다는 뜻이 아니다. 제품 브리프의 CPU/GPU/swap 확장, 파일 정리, lineup, 전체 세부 통계는 계획 또는 미구현으로 구분한다.
 

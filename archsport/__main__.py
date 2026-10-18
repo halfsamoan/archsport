@@ -57,6 +57,37 @@ def write_health(state_dir, payload):
     temp.replace(state_dir / 'health.json')
 
 
+def extension_version():
+    package_root = Path(__file__).resolve().parents[1]
+    candidates = (package_root / 'metadata.json', package_root / 'extension' / 'metadata.json')
+    for path in candidates:
+        try:
+            value = json.loads(path.read_text(encoding='utf-8')).get('version')
+            if isinstance(value, int) and value > 0:
+                return value
+        except (OSError, ValueError, TypeError):
+            continue
+    return None
+
+
+def acquire_worker_lock(state_dir):
+    state_dir.mkdir(parents=True, exist_ok=True)
+    path = state_dir / 'worker.lock'
+    descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+    os.chmod(path, 0o600)
+    stream = os.fdopen(descriptor, 'r+b')
+    try:
+        import fcntl
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        stream.close()
+        return None
+    except BaseException:
+        stream.close()
+        raise
+    return stream
+
+
 class ReplayProvider:
     def __init__(self, path):
         self.frames = json.loads(path.read_text(encoding='utf-8'))['frames']
@@ -84,6 +115,8 @@ def main():
     parser.add_argument('--poll-seconds', type=int)
     parser.add_argument('--daily-budget', type=int)
     parser.add_argument('--key-revision', type=int, default=0)
+    parser.add_argument('--ui-version', type=int)
+    parser.add_argument('--state-dir', type=Path)
     parser.add_argument('--demo', action='store_true')
     parser.add_argument('--replay', type=Path)
     parser.add_argument('--once', action='store_true')
@@ -93,9 +126,21 @@ def main():
     except (OSError, ValueError, TypeError):
         print(json.dumps({'health': 'error', 'message': '설정 JSON 또는 값이 올바르지 않습니다.'}, ensure_ascii=False), flush=True)
         return 2
-    state_dir = Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'archsport'
-    store = Store(':memory:' if config['mode'] == 'demo' else state_dir / 'state.db')
+    state_dir = args.state_dir or (Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'archsport')
+    parent_pid = os.getppid()
+    worker_lock = None
+    store = None
+    package_version = extension_version()
+    version_mismatch = args.ui_version is not None and package_version is not None and args.ui_version != package_version
     try:
+        if config['mode'] != 'demo':
+            worker_lock = acquire_worker_lock(state_dir)
+            if worker_lock is None:
+                print(json.dumps({'health': 'error', 'code': 'WORKER_ALREADY_RUNNING',
+                                  'message': '다른 Archsport worker가 실행 중입니다 · 확장을 끈 뒤 CLI를 사용하세요'},
+                                 ensure_ascii=False), flush=True)
+                return 3
+        store = Store(':memory:' if config['mode'] == 'demo' else state_dir / 'state.db')
         try:
             provider = ReplayProvider(args.replay) if args.replay else DemoProvider() if config['mode'] == 'demo' else CompositeProvider(config, store)
         except ProviderError as exc:
@@ -104,7 +149,12 @@ def main():
             provider = ErrorProvider('키 파일 또는 replay 데이터를 읽을 수 없습니다. 파일과 권한을 확인하세요.')
         worker = Worker(config, store, provider, LogoCache())
         while True:
+            if not args.once and os.getppid() != parent_pid:
+                return 0
             payload = worker.poll()
+            if version_mismatch:
+                payload['ui_version_mismatch'] = {'ui': args.ui_version, 'package': package_version}
+                payload['message'] = '확장 버전 불일치 · 로그아웃 후 다시 로그인하세요'
             write_health(state_dir, payload)
             print(json.dumps(payload, ensure_ascii=False), flush=True)
             if args.once:
@@ -113,6 +163,8 @@ def main():
             last_wall, last_mono = time.time(), time.monotonic()
             while time.monotonic() < deadline:
                 time.sleep(min(5, max(0, deadline - time.monotonic())))
+                if os.getppid() != parent_pid:
+                    return 0
                 wall, mono = time.time(), time.monotonic()
                 if abs((wall - last_wall) - (mono - last_mono)) > 5:
                     worker.first = True
@@ -121,7 +173,10 @@ def main():
     except (KeyboardInterrupt, BrokenPipeError):
         return 0
     finally:
-        store.close()
+        if store is not None:
+            store.close()
+        if worker_lock is not None:
+            worker_lock.close()
 
 
 if __name__ == '__main__':

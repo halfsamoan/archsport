@@ -217,7 +217,7 @@ class ScheduleTests(unittest.TestCase):
 class ServiceTests(unittest.TestCase):
     def setUp(self):
         self.store = Store(':memory:')
-        self.config = {'mode': 'live', 'team_name': 'Barcelona', 'poll_seconds': 60}
+        self.config = {'mode': 'live', 'team_name': 'Barcelona', 'poll_seconds': 300}
         self.current = normalize(copy.deepcopy(RAW))
         self.current.update(home_score=0, away_score=0, status='live')
 
@@ -237,12 +237,48 @@ class ServiceTests(unittest.TestCase):
         worker = self.worker()
         worker.poll(NOW)
         self.current = ProviderError('offline')
-        self.assertEqual(worker.poll(NOW + timedelta(seconds=20))['health'], 'error')
+        self.assertEqual(worker.poll(NOW + timedelta(seconds=300))['health'], 'error')
         self.current = normalize(copy.deepcopy(RAW))
         self.current.update(home_score=1, away_score=0, status='live')
-        self.assertIsNone(worker.poll(NOW + timedelta(seconds=40))['alert'])
+        self.assertIsNone(worker.poll(NOW + timedelta(seconds=600))['alert'])
         self.current['home_score'] = 2
-        self.assertEqual(worker.poll(NOW + timedelta(seconds=60))['alert']['kind'], 'score')
+        self.assertEqual(worker.poll(NOW + timedelta(seconds=900))['alert']['kind'], 'score')
+
+    def test_realistic_live_poll_gaps_preserve_score_alerts(self):
+        for interval in (300, 600):
+            with self.subTest(interval=interval):
+                self.config['poll_seconds'] = interval
+                self.current.update(home_score=0, away_score=0, status='live')
+                worker = self.worker()
+                worker.poll(NOW)
+                self.current['home_score'] = 1
+                payload = worker.poll(NOW + timedelta(seconds=interval))
+                self.assertEqual(payload['alert']['kind'], 'score')
+                self.assertEqual(payload['alert']['match_id'], payload['match']['id'])
+                self.assertEqual(payload['alert']['kickoff_utc'], payload['match']['kickoff_utc'])
+                self.assertEqual(payload['stale_after_seconds'], 2 * interval + 60)
+                self.current['status'] = 'halftime'
+                payload = worker.poll(NOW + timedelta(seconds=2 * interval))
+                self.assertEqual(payload['alert']['kind'], 'status')
+
+    def test_long_gap_after_cooldown_rebaselines(self):
+        self.config['poll_seconds'] = 300
+        worker = self.worker()
+        worker.poll(NOW)
+        self.current['home_score'] = 1
+        payload = worker.poll(NOW + timedelta(seconds=3600))
+        self.assertIsNone(payload['alert'])
+
+    def test_poll_configuration_is_bounded_to_supported_live_intervals(self):
+        from argparse import Namespace
+        from archsport.__main__ import read_config
+
+        args = Namespace(config=None, mode='live', team_name=None, team_country=None,
+                         poll_seconds=30, daily_budget=None, watch_teams=None,
+                         key_revision=0, demo=False, replay=None)
+        self.assertEqual(read_config(args)['poll_seconds'], 300)
+        args.poll_seconds = 900
+        self.assertEqual(read_config(args)['poll_seconds'], 600)
 
     def test_provider_plan_restriction_uses_supplied_retry_interval(self):
         worker = self.worker()
@@ -328,11 +364,11 @@ class ServiceTests(unittest.TestCase):
                 return copy.deepcopy(self.matches)
 
         config = {'mode': 'live', 'team_name': 'Barcelona', 'watch_teams': ['Barcelona', 'Lazio', 'Como'],
-                  'poll_seconds': 60}
+                  'poll_seconds': 300}
         worker = Worker(config, self.store, MultiProvider())
         worker.poll(NOW)
         MultiProvider.matches[1]['home_score'] = 1
-        payload = worker.poll(NOW + timedelta(seconds=60))
+        payload = worker.poll(NOW + timedelta(seconds=300))
         self.assertEqual(payload['match']['id'], 'lazio-live')
         self.assertEqual(payload['alert']['kind'], 'score')
         self.assertEqual(len(self.store.latest_all()), 2)
@@ -351,7 +387,7 @@ class ServiceTests(unittest.TestCase):
                 return []
 
         config = {'mode': 'live', 'team_name': 'Barcelona', 'watch_teams': ['Barcelona', 'Lazio', 'Como'],
-                  'poll_seconds': 120}
+                  'poll_seconds': 300}
         worker = Worker(config, self.store, ScheduleProvider())
         first = worker.poll(NOW)
         self.assertTrue(first['visible'])
@@ -374,6 +410,6 @@ class ServiceTests(unittest.TestCase):
                 return []
 
         config = {'mode': 'live', 'team_name': 'Barcelona', 'watch_teams': ['Barcelona', 'Lazio', 'Como'],
-                  'poll_seconds': 120}
+                  'poll_seconds': 300}
         payload = Worker(config, self.store, ScheduleProvider()).poll(NOW)
         self.assertEqual(payload['alert']['title'], '2시간 후 경기')

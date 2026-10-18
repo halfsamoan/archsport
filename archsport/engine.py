@@ -76,14 +76,14 @@ class Store:
         row = self.db.execute('SELECT payload,seen_at FROM snapshots ORDER BY seen_at DESC LIMIT 1').fetchone()
         return (json.loads(row[0]), row[1]) if row else (None, None)
 
-    def ingest(self, match, now, suppress=False):
+    def ingest(self, match, now, suppress=False, max_gap_seconds=120):
         row = self.db.execute('SELECT payload, seen_at, revision FROM snapshots WHERE match_id=?',
                               (match['id'],)).fetchone()
         alert = None
         revision = 0 if row is None else row[2]
         previous = json.loads(row[0]) if row else None
         # First fetch or a long gap establishes a baseline, without replaying goals.
-        if previous and not suppress and 0 <= now - row[1] <= 120:
+        if previous and not suppress and 0 <= now - row[1] <= max(0, int(max_gap_seconds)):
             old = (previous.get('home_score'), previous.get('away_score'))
             new = (match.get('home_score'), match.get('away_score'))
             if all(isinstance(x, int) for x in old + new) and old != new:

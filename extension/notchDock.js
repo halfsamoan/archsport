@@ -1,22 +1,35 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
-import St from 'gi://St';
+import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import {layoutNotches, canClaim} from './dockModel.js';
+import {DOCK_PROTOCOL, layoutNotches, canClaim} from './dockModel.js';
 
 // One small registry on the common layoutManager, not a daemon or payload bus.
 // Both independently installed extensions carry the same versioned adapter.
-const KEY = '_archsportMatciNotchDockV1';
+const KEY = `_archsportMatciNotchDock_v${DOCK_PROTOCOL}`;
+
+function layoutSourceHash() {
+    let hash = 2166136261;
+    for (const char of layoutNotches.toString()) {
+        hash ^= char.charCodeAt(0);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
+}
 
 function getDock() {
     if (Main.layoutManager[KEY]) return Main.layoutManager[KEY];
     const dock = {
+        protocol: DOCK_PROTOCOL,
+        owner: GLib.uuid_string_random(),
+        sourceHash: layoutSourceHash(),
         participants: new Map(), active: null,
         reflow() {
             const groups = new Map();
             for (const participant of this.participants.values()) {
                 const monitor = participant.monitor();
                 if (!monitor || !participant.state.visible) {
+                    participant.lastFallback = false;
                     participant.actor.hide();
                     continue;
                 }
@@ -29,7 +42,8 @@ function getDock() {
                 const panelHeight = monitor === Main.layoutManager.primaryMonitor ? Main.panel.height : 0;
                 for (const placement of layoutNotches(entries, {...monitor, panelHeight})) {
                     const participant = this.participants.get(placement.id);
-                    participant.actor.visible = !placement.fallback;
+                    participant.lastFallback = placement.fallback;
+                    participant.actor.visible = participant.state.visible && !placement.fallback;
                     if (!placement.fallback) {
                         const target = `${placement.x}:${placement.y}`;
                         if (participant.targetPosition !== target) {
@@ -58,8 +72,13 @@ export class DockParticipant {
         this.onPlacement = onPlacement;
         this.animations = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
         this.targetPosition = null;
+        this.lastFallback = false;
         this.state = {width: 360, height: 46, visible: false, expanded: false};
         this.dock = getDock();
+        if (this.dock.sourceHash !== layoutSourceHash() && !this.dock.sourceMismatchLogged) {
+            this.dock.sourceMismatchLogged = true;
+            console.warn(`[notchDock] shared layout source differs; owner=${this.dock.owner}, protocol=${this.dock.protocol}`);
+        }
         this.dock.participants.set(id, this);
     }
 
@@ -80,7 +99,8 @@ export class DockParticipant {
         // Monitor and panel geometry can change even when this state is unchanged.
         const monitor = this.monitor();
         const geometry = monitor ? `${monitor.x}:${monitor.y}:${monitor.width}:${Main.panel.height}` : '';
-        if (changed || geometry !== this.geometry) {
+        const expectedVisible = Boolean(this.state.visible && !this.lastFallback);
+        if (changed || geometry !== this.geometry || this.actor.visible !== expectedVisible) {
             this.geometry = geometry;
             this.dock.reflow();
         }

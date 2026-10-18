@@ -70,7 +70,7 @@ GSettings에 mode, 팀/국가, poll-seconds, daily-budget, show-notch, expand-on
 | 엔진 | Windows/WSL 테스트 | 변화 조회·캐시·예산·정정·복구·scheduler |
 | 네이티브 설정 | 코드+schema strict 검증 | 실제 GTK4/Adwaita창·키저장·즉시반영 |
 | GNOME표면 | 코드 제공 | GNOME46/50 enable/disable·scale·fullscreen·로그인 |
-| 실제 경기 | 미검증 | 사용자 개인키로 Barcelona goal/VAR/HT/FT |
+| 실제 경기 | 미검증 | 사용자 개인키로 goal/score correction/HT/FT. VAR 알림은 요구사항에서 제외 |
 | 안정화 | 계획 | 자원/latency·동시사건·중복worker·업그레이드 |
 
 P0체크리스트는 인계서에 있다. 실제 ASUS의125/150%배율, 로그인 자동시작, suspend/resume, 인터넷복구는 아직 통과로 처리하지 않는다. systemduser+socket/DBus는 위검증 이후 필요하면 도입한다. statistics/lineups/다중팀/quiet-hours는 후속이며 첫1.0에 모두 넣지 않는다.
