@@ -10,13 +10,15 @@
 - 기본 **live** 모드. 키가 없으면 설정 필요 상태를 표시하며 가짜 경기로 대체하지 않음.
 - `fixtures`를 polling하고 점수·상태 변경 때만 `events` 요청. 사건 조회가 실패해도 새 점수는 유지.
 - Barcelona 팀 ID를 정확한 이름/국가로 자동 결정하고 SQLite에 캐싱.
-- 경기 없음 30분 / 경기 전 2분 / 진행 15–60초 / FT 후 5분간 60초 / 이후 해당 경기 polling 종료.
+- 패널의 FCB 메뉴에서 다음 경기·최근 4경기 결과·가장 최근 경기 기본 스탯을 확인한다. 노치는 경기 중에만 자동 표시된다.
+- 경기 중 기본 120초(설정 60–300초) / 경기 없음 30분 / 경기 전 킥오프까지 15분 여유 / 종료 후 다음 경기 대기.
 - 중복·VAR·재시작·재연결 기준값 처리, 오프라인 캐시 복구.
 - `prefs.js + GSettings`: 팀·국가·데이터 모드·API 키·간격·예산·노치 표시·알림 시간·모니터·스포일러 설정.
 - subprocess 종료 시 자동 재시작, logind 절전/복귀 신호 처리.
+- matci와 함께 설치하면 패널 아래 중앙 그룹으로 배치하고, 한쪽을 펼칠 때 다른 노치를 접음. 실제 GNOME 동시 표시 검수는 진행 전.
 - Windows 브라우저용 노치/애니메이션 시제품과 오프라인 경기 replay.
 
-**실제 API 키가 없어 라이브 경기 검증은 아직 못 했습니다. GNOME Shell GUI·ASUS 실제 배율·절전은 실기기에서 검증해야 합니다.** WSL에서 Python 테스트와 GSettings 스키마 검증이 통과한 것은 GNOME 화면 검증과 다릅니다.
+개인 API 키를 설정창에 저장한 상태이나, 실제 경기 데이터·일정·스탯 응답은 아직 확인하지 않았습니다. GNOME Shell GUI·ASUS 실제 배율·절전은 실기기 검수가 필요합니다.
 
 ## Ubuntu에서 시작
 
@@ -38,7 +40,7 @@ gnome-extensions prefs archsport@local
 
 설정창에서 개인 API-Football 키를 입력하고 적용합니다. JSON 수정이나 확장 수동 재활성화 없이 적용됩니다. 키는 `$XDG_CONFIG_HOME/archsport/api-key` (기본 `~/.config/archsport/api-key`)에 0600 권한으로 저장하며 GitHub·GSettings·stdout에 넣지 않습니다. 구독·결제는 자동으로 하지 않습니다.
 
-`daily-budget=90`은 무료 요금제 보호 설정입니다. **60초 간격 2시간 추적도 fixtures만 약 120회**이므로 무료 100회/일을 초과할 수 있습니다. 키를 연결하는 것만으로 무료 무제한 실시간 데이터가 되지 않습니다. 본인 요금제에 맞춰 설정창에서 예산을 조정하세요. [공급사 요금](https://www.api-football.com/pricing)
+`daily-budget=90`은 무료 요금제 보호 설정입니다. 진행 중 경기는 기본 120초 간격이며, 일정·최근 결과·통계 응답은 각각 로컬 DB에 캐시합니다. 무료 100회/일 안에서 하루 종일 경기를 추적할 수 있다고 보장하지는 않습니다. 설정에서 요청 상한과 갱신 간격을 조정할 수 있습니다. [공급사 요금](https://www.api-football.com/pricing)
 
 지원 목표는 GNOME 46/50입니다. GNOME 42의 Ubuntu 22.04는 이 ESM 확장 대상이 아닙니다. 설치할 Ubuntu의 버전을 `gnome-shell --version`으로 확인하세요.
 
@@ -49,7 +51,13 @@ git pull --ff-only
 python3 tools/install_extension.py --upgrade
 ```
 
-이후 로그아웃·로그인하고 다시 활성화합니다. 이미 활성화한 확장은 GNOME이 사용자 세션에서 다시 불러오는 방식이며 별도 systemd 서비스는 필요 없습니다. 실제 재로그인 자동 시작은 실기기 검수 항목입니다.
+설치 뒤 현재 세션에서 확장을 다시 켭니다:
+
+```bash
+gnome-extensions enable archsport@local
+```
+
+GNOME이 이미 불러온 확장은 다른 버전의 코드를 현재 세션에서 다시 읽지 않을 수 있습니다. `gnome-extensions info archsport@local`에서 설치한 버전이 보이지 않으면 다음 사용자 세션 진입 뒤 적용됩니다. 실제 재로그인 자동 시작도 별도 실기기 검수 항목입니다.
 
 ## 키 없이 확인
 

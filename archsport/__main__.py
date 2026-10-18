@@ -11,7 +11,7 @@ from .provider import ApiFootball, DemoProvider, ProviderError
 from .service import Worker
 
 DEFAULT = {'mode': 'live', 'team_name': 'Barcelona', 'team_country': 'Spain',
-           'team_id': None, 'poll_seconds': 60, 'daily_budget': 90,
+           'team_id': None, 'poll_seconds': 120, 'daily_budget': 90,
            'key_file': str(Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'archsport/api-key')}
 
 
@@ -35,7 +35,7 @@ def read_config(args):
         config['mode'] = 'demo'
     if config['mode'] not in ('demo', 'live'):
         raise ValueError('mode')
-    config['poll_seconds'] = max(15, min(60, int(config['poll_seconds'])))
+    config['poll_seconds'] = max(60, min(300, int(config['poll_seconds'])))
     config['daily_budget'] = max(0, int(config['daily_budget']))
     return config
 

@@ -133,11 +133,11 @@ class ScheduleTests(unittest.TestCase):
             self.assertEqual(poll_interval(self.match(status), NOW, 30), 30)
             self.assertEqual(poll_interval(self.match(status), NOW, 1), 15)
 
-    def test_finished_hides_after_5_minutes(self):
+    def test_finished_fixture_is_not_visible(self):
         match = self.match('finished')
         start = NOW.timestamp()
         self.assertEqual(poll_interval(match, NOW, finished_at=start), 60)
-        self.assertTrue(match_visible(match, NOW, start))
+        self.assertFalse(match_visible(match, NOW, start))
         later = NOW + timedelta(seconds=300)
         self.assertEqual(poll_interval(match, later, finished_at=start), 1800)
         self.assertFalse(match_visible(match, later, start))

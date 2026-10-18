@@ -87,7 +87,7 @@ gnome-extensions prefs archsport@local
 
 ## 5. API 키와 실데이터 연결
 
-**Windows 작업 시 API-Football 키는 존재하지 않았으며 실경기 수신을 검증하지 못했다. API 키를 새로 발급/결제한 것도 아니다.**
+사용자가 API-Football 개인 키를 설정창에 로컬 저장했다고 확인했다. 실제 응답/실경기 수신은 별도로 검증해야 한다. 키를 채팅·저장소·진단 출력에서 확인하지 않는다.
 
 설정창에서:
 
@@ -113,13 +113,13 @@ API 공식 자료:
 - https://www.api-football.com/pricing
 - https://www.api-football.com/news/post/how-to-get-all-teams-and-their-ids
 
-무료 100회/일은 전체 실시간 경기 추적을 보장하지 않는다. 60초×120분이면 **fixtures 약 120회 + 변화 횟수만큼 events + 최초 탐색**이다. 예산90은 보호 상한이며 무료로 전체 경기를 커버한다고 주장하지 않는다. 전반·후반·VAR·추가시간·연장에 따른 요청 수도 다르다.
+무료 100회/일은 전체 실시간 경기 추적을 보장하지 않는다. 기본 120초 간격과 90회 로컬 요청 상한을 사용하고, 다음 일정(6시간), 최근 5경기(12시간), 최신 완료 경기 스탯(7일), 당일 일정(10분)을 SQLite에 캐시한다. 라이브 추적 가능 시간은 경기 길이·events 변경·초기 데이터 조회에 따라 달라진다.
 
 ## 6. 주요 파일과 계약
 
 | 파일 | 역할 / 지켜야 할 계약 |
 |---|---|
-| `archsport/provider.py` | 정확한 팀 검색·ID 영속 캐시·경기 선택·변화 시 events; HTTP 200 errors도 오류 |
+| `archsport/provider.py` | 정확한 Barcelona 검색·ID 영속 캐시·경기 선택·변화 시 events; 일정/최근 경기/기본 스탯 저빈도 캐시 |
 | `archsport/scheduler.py` | 시각 의존 정책을 순수 함수로 테스트; FT는 최초 관측 시점부터 5분 |
 | `archsport/engine.py` | 스코어 감소 정정·중복·revision; 기존 알고리즘 유지 |
 | `archsport/service.py` | 첫 성공/재시작/오류 뒤 첫 복구는 baseline; 저장된 마지막 값은 error로 표시 |
@@ -144,7 +144,7 @@ API 공식 자료:
 
 XDG_CONFIG_HOME / XDG_STATE_HOME / XDG_CACHE_HOME / XDG_DATA_HOME이 있으면 그것을 따른다. 로컬 DB를 이 저장소에 복사할 필요 없다. 처음 API 조회로 ID와 snapshot을 다시 구성한다.
 
-JSON Lines의 `mode`, `health`, `updated_at`, `match`, `alert`, `visible`, `next_poll_seconds`를 유지한다. null 점수와 0을 구별한다. PK는 별도 필드. 오류 응답은 마지막 정보를 유지하고 live로 위장하지 않는다.
+JSON Lines의 `mode`, `health`, `updated_at`, `match`, `alert`, `visible`, `next_poll_seconds`, `context`를 유지한다. null 점수와 0을 구별한다. PK는 별도 필드. 오류 응답은 마지막 정보를 유지하고 live로 위장하지 않는다. `context`는 다음 경기, 최근 결과, 최신 경기 기본 스탯이다.
 
 ## 7. 동봉한 데이터로 키 없이 검사
 
@@ -179,6 +179,7 @@ http://127.0.0.1:4173 에서 디자인을 확인한다. Windows에 있던 서버
 | P0-08 | 전체화면/overview/잠금 | 설정대로 숨김, 복귀 시 중복 actor 없음 | 미검증 |
 | P0-09 | worker 강제 종료 | 5초부터 재시도, 중복 프로세스·이전 callback 없음 | 미검증 |
 | P0-10 | FT 이후 | 5분 후 해당 경기 반복 요청 종료, 다음 일정 저빈도 전환 | 미검증 |
+| P0-11 | matci 동시 활성 | 중앙 그룹·8 logical px 간격·수동 우선순위·좁은 폭 fallback·패널 클릭 유지 | 미검증 |
 
 진단 예:
 

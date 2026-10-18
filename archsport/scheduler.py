@@ -12,7 +12,7 @@ def poll_interval(match, now, live_seconds=60, finished_at=None):
         return 1800
     status = match['status']
     if status in ('live', 'halftime', 'extra_time', 'penalties', 'interrupted'):
-        return max(15, min(60, live_seconds))
+        return max(60, min(300, live_seconds))
     if status == 'finished':
         return 60 if finished_at is not None and now.timestamp() - finished_at < 300 else 1800
     if status == 'scheduled':
@@ -30,6 +30,6 @@ def poll_interval(match, now, live_seconds=60, finished_at=None):
 def match_visible(match, now, finished_at=None):
     if not match:
         return False
-    if match['status'] == 'finished':
-        return finished_at is not None and now.timestamp() - finished_at < 300
-    return match['status'] not in ('cancelled', 'abandoned', 'postponed')
+    # Only surface a fixture after play has begun. Scheduled and finished
+    # fixtures remain useful to the scheduler, but do not occupy the desktop.
+    return match['status'] in ('live', 'halftime', 'extra_time', 'penalties', 'interrupted')

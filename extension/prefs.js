@@ -59,11 +59,11 @@ export default class ArchsportPreferences extends ExtensionPreferences {
             settings.bind(keyName, row, 'value', Gio.SettingsBindFlags.DEFAULT);
             group.add(row);
         };
-        spin(data, 'poll-seconds', '경기 중 업데이트 간격 · 초', 15, 60, 15);
+        spin(data, 'poll-seconds', '경기 중 업데이트 간격 · 초', 60, 300, 30);
         spin(data, 'daily-budget', '일일 API 요청 상한 · 무료 기본 90', 0, 100000, 10);
         const notch = new Adw.PreferencesGroup({title: '노치', description: 'ASUS 화면의 GNOME 상단 패널 아래에 표시합니다.'});
         page.add(notch);
-        for (const [keyName, title] of [['show-notch', '노치 표시'], ['expand-on-event', '골·정정·경기 상태 변경 시 펼치기'], ['hide-fullscreen', '전체화면에서 숨기기'], ['show-upcoming', '다음 경기 표시'], ['spoiler', '스포일러 숨기기']]) {
+        for (const [keyName, title] of [['show-notch', '경기 중 노치 표시'], ['expand-on-event', '골·정정·경기 상태 변경 시 펼치기'], ['hide-fullscreen', '전체화면에서 숨기기'], ['spoiler', '스포일러 숨기기']]) {
             const row = new Adw.SwitchRow({title});
             settings.bind(keyName, row, 'active', Gio.SettingsBindFlags.DEFAULT);
             notch.add(row);

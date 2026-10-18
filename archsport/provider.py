@@ -59,6 +59,7 @@ class ApiFootball:
         self._signatures = {}
         self._pending_events = set()
         self.warning = ''
+        self.context = {'upcoming': None, 'recent': [], 'recent_stats': None}
         self.key = os.environ.get('ARCHSPORT_API_KEY', '').strip()
         if not self.key:
             path = Path(config.get('key_file', '~/.config/archsport/api-key')).expanduser()
@@ -101,8 +102,55 @@ class ApiFootball:
             raise ProviderError('API 데이터 목록이 없습니다.')
         return payload['response']
 
+    def _cached_get(self, key, ttl, now, endpoint, **params):
+        cached = self.store.cache_get('api:' + key)
+        if isinstance(cached, dict) and now.timestamp() - cached.get('at', 0) < ttl:
+            return cached.get('data', [])
+        result = self.get(endpoint, **params)
+        self.store.cache_set('api:' + key, {'at': now.timestamp(), 'data': result})
+        return result
+
+    def _load_context(self, now):
+        """Load low-frequency schedule/history data without blocking live scores."""
+        self.context = {'upcoming': None, 'recent': [], 'recent_stats': None}
+        try:
+            upcoming = self._cached_get(f'next:{self.team_id}', 6 * 3600, now,
+                                        'fixtures', team=self.team_id, next=1, timezone='UTC')
+            if upcoming:
+                self.context['upcoming'] = normalize(upcoming[0])
+        except (ProviderError, KeyError, TypeError, ValueError):
+            self.warning = '다음 경기 일정을 갱신하지 못했습니다.'
+        try:
+            recent = self._cached_get(f'last:{self.team_id}', 12 * 3600, now,
+                                      'fixtures', team=self.team_id, last=5, timezone='UTC')
+            recent = [normalize(item) for item in recent if STATUS.get(
+                item['fixture']['status']['short']) in ('finished', 'abandoned')]
+            recent.sort(key=lambda fixture: fixture.get('kickoff_utc') or '', reverse=True)
+            self.context['recent'] = recent
+            if recent:
+                item = recent[0]
+                stats = self._cached_get(f"stats:{item['id']}", 7 * 86400, now,
+                                         'fixtures/statistics', fixture=item['id'])
+                wanted = {'Total Shots', 'Shots on Goal', 'Ball Possession', 'Corner Kicks'}
+                values = {}
+                for team in stats:
+                    team_id = str((team.get('team') or {}).get('id'))
+                    values[team_id] = {row.get('type'): row.get('value')
+                                       for row in team.get('statistics', [])
+                                       if row.get('type') in wanted}
+                self.context['recent_stats'] = {
+                    'fixture_id': item['id'],
+                    'teams': [item.get('home', ''), item.get('away', '')],
+                    'team_order': [str(item.get('home_id')), str(item.get('away_id'))],
+                    'values': values, 'available': bool(values),
+                }
+        except (ProviderError, KeyError, TypeError, ValueError):
+            self.warning = '최근 경기 통계 조회 한도 또는 연결 상태를 확인하세요.'
+
     def fetch(self, now=None):
         now = now or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
         self.warning = ''
         cache_key = 'team:' + self.config['team_name'].casefold() + ':' + self.config['team_country'].casefold()
         if self.team_id is None:
@@ -120,15 +168,20 @@ class ApiFootball:
         if self._selected_id:
             fixtures = self.get('fixtures', id=self._selected_id, timezone='UTC')
         else:
-            fixtures = self.get('fixtures', team=self.team_id, date=now.date().isoformat(), timezone='UTC')
+            fixtures = self._cached_get(f"day:{self.team_id}:{now.date().isoformat()}", 600, now,
+                                        'fixtures', team=self.team_id,
+                                        date=now.date().isoformat(), timezone='UTC')
         if not self._selected_id and now.hour < 4:
-            previous = self.get('fixtures', team=self.team_id,
-                                date=(now - timedelta(days=1)).date().isoformat(), timezone='UTC')
+            previous = self._cached_get(f"day:{self.team_id}:{(now - timedelta(days=1)).date().isoformat()}",
+                                        600, now, 'fixtures', team=self.team_id,
+                                        date=(now - timedelta(days=1)).date().isoformat(), timezone='UTC')
             fixtures += [f for f in previous if STATUS.get(f['fixture']['status']['short']) in ACTIVE]
         if not fixtures:
             self._selected_id = None
-            fixtures = self.get('fixtures', team=self.team_id, next=1, timezone='UTC')
+            fixtures = self._cached_get(f'next:{self.team_id}', 6 * 3600, now,
+                                        'fixtures', team=self.team_id, next=1, timezone='UTC')
             if not fixtures:
+                self._load_context(now)
                 return None
         def sort_key(item):
             status = STATUS.get(item['fixture']['status']['short'])
@@ -148,8 +201,10 @@ class ApiFootball:
             current['finished_at'] = finished_at
             if now.timestamp() - finished_at >= 300:
                 self._selected_id = None
-                future = self.get('fixtures', team=self.team_id, next=1, timezone='UTC')
+                future = self._cached_get(f'next:{self.team_id}', 6 * 3600, now,
+                                          'fixtures', team=self.team_id, next=1, timezone='UTC')
                 if not future:
+                    self._load_context(now)
                     return None
                 item = future[0]
                 current = normalize(item)
@@ -173,6 +228,8 @@ class ApiFootball:
                 self._events[identifier] = []
                 self.warning = '점수는 갱신했지만 경기 상세를 받지 못했습니다.'
         current['events'] = self._events.get(identifier, [])
+        # Score/fixture requests take priority over optional context endpoints.
+        self._load_context(now)
         return current
 
 
