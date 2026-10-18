@@ -8,7 +8,7 @@ feature,area,priority,original,clone,notes,id,evidence,screen,implementation
 진행 시간과 경기 상태,scores,must,yes,partial,API 상태 정규화; 공급사 분을 그대로 표시,F007,A05,S04,archsport/provider.py; extension/extension.js
 경기별 상세 카드,details,must,yes,partial,웹 상세 모달은 시연 타임라인,F008,A05,S03,web/index.html
 play-by-play 타임라인,details,must,yes,partial,API events 정규화; GNOME 마지막 사건 표시; 전체 실타임라인 후속,F009,A05,S03,archsport/provider.py
-팀 통계,details,should,yes,no,공급사 statistics 연결 예정,F010,A05,S03,planned
+팀 통계,details,should,yes,partial,최근 완료 경기 1건의 기본 statistics 제공; 경기 선택·전체 경기 통계 화면은 미구현,F010,A05,S03,archsport/provider.py;extension/extension.js
 라인업,details,should,yes,no,대회별 데이터 가용성 확인 필요,F011,A01;A05,S03,planned
 종목별 박스 스코어,details,could,yes,no,축구 이후 각 종목 별도 모델,F012,A02,S03,planned
 경기 좌우 전환,navigation,should,yes,no,다중 경기 이후,F013,A05,S03,planned

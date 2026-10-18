@@ -60,8 +60,13 @@ class FlowTests(unittest.TestCase):
         provider = self.provider()
         provider.fetch(NOW)
         provider.fetch(NOW + timedelta(seconds=60))
-        self.assertEqual([p for p, _ in self.calls], ['/fixtures', '/fixtures'])
-        self.assertIn('id', self.calls[-1][1])
+        event_calls = [params for path, params in self.calls if path == '/fixtures/events']
+        selected_fixture_calls = [params for path, params in self.calls
+                                  if path == '/fixtures' and 'id' in params]
+        self.assertEqual(event_calls, [])
+        self.assertEqual(len(selected_fixture_calls), 1)
+        self.assertEqual(sum('next' in params for path, params in self.calls), 1)
+        self.assertEqual(sum('last' in params for path, params in self.calls), 1)
 
     def test_score_change_fetches_events_once(self):
         provider = self.provider()
@@ -130,8 +135,9 @@ class ScheduleTests(unittest.TestCase):
 
     def test_live_bounds(self):
         for status in ('live', 'halftime', 'extra_time', 'penalties'):
-            self.assertEqual(poll_interval(self.match(status), NOW, 30), 30)
-            self.assertEqual(poll_interval(self.match(status), NOW, 1), 15)
+            self.assertEqual(poll_interval(self.match(status), NOW, 30), 60)
+            self.assertEqual(poll_interval(self.match(status), NOW, 120), 120)
+            self.assertEqual(poll_interval(self.match(status), NOW, 600), 300)
 
     def test_finished_fixture_is_not_visible(self):
         match = self.match('finished')

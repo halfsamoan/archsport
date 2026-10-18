@@ -32,14 +32,6 @@ export default class Archsport extends Extension {
         this._root = new St.BoxLayout({vertical: true, style_class: 'archsport-notch',
             reactive: false, can_focus: true, width: 280, height: 46,
             accessible_name: 'Archsport 경기 노치', clip_to_allocation: true});
-        const toggle = () => {
-            const expanding = !this._expanded && !this._activeAlert;
-            if (expanding && !this._dock.claim(100)) return;
-            this._expanded = expanding;
-            this._activeAlert = null;
-            this._render();
-            if (expanding) this._root.grab_key_focus();
-        };
         const openDashboard = () => {
             if (!this._dock.claim(100)) return;
             this._expanded = true;
@@ -54,7 +46,7 @@ export default class Archsport extends Extension {
                 return Clutter.EVENT_STOP;
             }
             if ([Clutter.KEY_Return, Clutter.KEY_space].includes(key)) {
-                toggle(); return Clutter.EVENT_STOP;
+                this._toggle(); return Clutter.EVENT_STOP;
             }
             return Clutter.EVENT_PROPAGATE;
         });
@@ -66,7 +58,7 @@ export default class Archsport extends Extension {
         }
         this._indicator = new PanelMenu.Button(0.0, 'Archsport');
         this._indicator.add_child(new St.Label({text: 'FCB', y_align: Clutter.ActorAlign.CENTER}));
-        this._indicator.menu.addAction('노치 펼치기 / 접기', toggle);
+        this._indicator.menu.addAction('노치 펼치기 / 접기', () => this._toggle());
         this._indicator.menu.addAction('일정 · 최근 경기 · 스탯', openDashboard);
         this._indicator.menu.addAction('Archsport 설정', () => this.openPreferences());
         this._indicator.menu.addAction('데이터 다시 연결', () => this._restartWorker());
@@ -100,6 +92,15 @@ export default class Archsport extends Extension {
 
     _connect(object, signal, callback) {
         this._signals.push([object, object.connect(signal, callback)]);
+    }
+
+    _toggle() {
+        const expanding = !this._expanded && !this._activeAlert;
+        if (expanding && !this._dock.claim(100)) return;
+        this._expanded = expanding;
+        this._activeAlert = null;
+        this._render();
+        if (expanding) this._root.grab_key_focus();
     }
 
     _monitor() {
@@ -200,7 +201,7 @@ export default class Archsport extends Extension {
             const compact = new St.Button({style_class: 'archsport-compact-button', can_focus: true, x_expand: true,
                 accessible_name: `Barcelona ${score}, ${clock || '경기 정보'}. 펼쳐서 일정과 최근 경기 보기`});
             compact.set_child(row);
-            compact.connect('clicked', toggle);
+            compact.connect('clicked', () => this._toggle());
             this._root.add_child(compact);
         } else {
             this._root.add_style_class_name('archsport-open');

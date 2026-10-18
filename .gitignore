@@ -16,3 +16,4 @@ local-diagnostics/
 health.json
 gschemas.compiled
 dist/
+.dev/
