@@ -7,6 +7,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import {DockParticipant} from './notchDock.js';
+import {calculateExpandedViewport} from './uiModel.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
 const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', 'poll-seconds', 'daily-budget', 'key-revision']);
@@ -17,6 +18,7 @@ const STATUS = {live: '진행 중', halftime: 'HT', finished: 'FT', scheduled: '
 export default class Archsport extends Extension {
     enable() {
         this._enabled = true;
+        this._shellEnding = false;
         this._clearPendingRelogin();
         this._generation = 0;
         this._signals = [];
@@ -64,11 +66,13 @@ export default class Archsport extends Extension {
         this._indicator.add_child(new St.Label({text: '⚽', y_align: Clutter.ActorAlign.CENTER}));
         this._indicator.menu.addAction('노치 펼치기 / 접기', () => this._toggle());
         this._indicator.menu.addAction('일정 · 최근 경기', openDashboard);
-        this._indicator.menu.addAction('Archsport 설정', () => this.openPreferences());
+        this._indicator.menu.addAction('Archsport 설정', () => this._openPreferences());
         this._indicator.menu.addAction('데이터 다시 연결', () => this._restartWorker());
         Main.panel.addToStatusArea(this.uuid, this._indicator);
         this._dock = new DockParticipant({id: this.uuid, actor: this._root,
-            monitor: () => this._monitor(), order: 0, onYield: () => {
+            monitor: () => this._monitor(), triggerActor: () => this._indicator, order: 0,
+            onOutside: () => this._toggle(), onShellShutdown: () => this._beginShellShutdown(),
+            onYield: () => {
                 if (this._activeAlert) enqueuePendingAlert(this._pendingAlerts, this._activeAlert);
                 this._persistPendingAlerts();
                 this._expanded = false; this._activeAlert = null; this._alertAnimate = false;
@@ -77,6 +81,9 @@ export default class Archsport extends Extension {
                 this._render(); this._schedulePendingAlert();
             }});
         this._connect(Main.layoutManager, 'monitors-changed', () => this._visibility());
+        this._connect(Main.panel, 'destroy', () => this._beginShellShutdown());
+        this._connect(this._root, 'destroy', () => this._beginShellShutdown());
+        this._connect(this._indicator, 'destroy', () => this._beginShellShutdown());
         this._connect(Main.panel, 'notify::height', () => this._visibility());
         this._connect(Main.overview, 'showing', () => this._visibility());
         this._connect(Main.overview, 'hidden', () => this._visibility());
@@ -109,6 +116,30 @@ export default class Archsport extends Extension {
         this._signals.push([object, object.connect(signal, callback)]);
     }
 
+    _openPreferences() {
+        try {
+            Promise.resolve(this.openPreferences()).catch(error =>
+                console.warn(`[Archsport] 설정을 열지 못했습니다: ${error.message}`));
+        } catch (error) {
+            console.warn(`[Archsport] 설정을 열지 못했습니다: ${error.message}`);
+        }
+    }
+
+    _beginShellShutdown() {
+        if (this._shellEnding) return;
+        this._shellEnding = true;
+        this._enabled = false;
+        this._sleeping = true;
+        this._dock?.shutdown();
+        this._stopWorker();
+        for (const name of ['_timer', '_pendingAlertTimer']) {
+            if (this[name]) GLib.source_remove(this[name]);
+            this[name] = 0;
+        }
+        if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
+        this._sleepSubscription = 0;
+    }
+
     _clearPendingRelogin() {
         const path = GLib.build_filenamev([GLib.get_user_state_dir(), 'archsport', 'pending-relogin.json']);
         try {
@@ -137,7 +168,7 @@ export default class Archsport extends Extension {
     }
 
     _visibility() {
-        if (!this._enabled || !this._dock) return;
+        if (!this._enabled || this._shellEnding || !this._dock) return;
         const match = this._payload.match;
         const updated = Date.parse(this._payload.updated_at ?? '');
         const staleAfterMs = (this._payload.stale_after_seconds ?? 300) * 1000;
@@ -267,7 +298,7 @@ export default class Archsport extends Extension {
     }
 
     _render() {
-        if (!this._enabled) return;
+        if (!this._enabled || this._shellEnding) return;
         if (this._timer) { GLib.source_remove(this._timer); this._timer = 0; }
         const now = GLib.get_monotonic_time() / 1000;
         const spoiler = this._settings.get_boolean('spoiler');
@@ -291,6 +322,9 @@ export default class Archsport extends Extension {
             clock = new Date(match.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'});
         }
         const expanded = this._expanded || Boolean(alert);
+        let expandedHeader = null;
+        let expandedBody = null;
+        let expandedScroll = null;
         if (!expanded) {
             this._root.remove_style_class_name('archsport-open');
             const row = new St.BoxLayout({style_class: 'archsport-compact',
@@ -317,16 +351,18 @@ export default class Archsport extends Extension {
                 alert ? 'archsport-alert' : 'archsport-live'));
             header.add_child(identity);
             const tools = new St.BoxLayout({style_class: 'archsport-tools'});
-            tools.add_child(this._iconButton('preferences-system-symbolic', '설정', () => this.openPreferences()));
+            tools.add_child(this._iconButton('preferences-system-symbolic', '설정', () => this._openPreferences()));
             tools.add_child(this._iconButton('pan-up-symbolic', '접기', () => { this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render(); }));
             header.add_child(tools);
             this._root.add_child(header);
+            expandedHeader = header;
+            expandedBody = new St.BoxLayout({vertical: true, style_class: 'archsport-body'});
 
             if (alert?.kind === 'kickoff') {
                 const reminder = new St.BoxLayout({style_class: 'archsport-context-row'});
                 reminder.add_child(new St.Icon({icon_name: 'alarm-symbolic', icon_size: 17}));
                 reminder.add_child(this._label(`${alert.club}  ·  ${alert.opponent}`, 'archsport-event'));
-                this._root.add_child(reminder);
+                expandedBody.add_child(reminder);
             }
             if (match && match.status !== 'scheduled') {
                 const scoreboard = new St.BoxLayout({style_class: 'archsport-scoreboard'});
@@ -340,15 +376,14 @@ export default class Archsport extends Extension {
                 const scoreLabel = this._label(score, 'archsport-score');
                 if (incoming?.kind === 'score') {
                     scoreLabel.opacity = 0;
-                    scoreLabel.scale_x = 0.82;
-                    scoreLabel.scale_y = 0.82;
-                    scoreLabel.ease({opacity: 255, scale_x: 1, scale_y: 1,
-                        duration: this._interface.get_boolean('enable-animations') ? 360 : 0,
+                    scoreLabel.translation_y = 4;
+                    scoreLabel.ease({opacity: 255, translation_y: 0,
+                        duration: this._interface.get_boolean('enable-animations') ? 240 : 0,
                         mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
                 }
                 scoreboard.add_child(scoreLabel);
                 scoreboard.add_child(away);
-                this._root.add_child(scoreboard);
+                expandedBody.add_child(scoreboard);
             }
             const events = match?.events ?? [];
             const latest = alert?.kind === 'score' ? events.filter(e => e.kind === 'Goal' && e.detail !== 'Missed Penalty').at(-1) : events.at(-1);
@@ -358,12 +393,12 @@ export default class Archsport extends Extension {
                     eventLabel.opacity = 0;
                     eventLabel.translation_y = 7;
                     eventLabel.ease({opacity: 255, translation_y: 0,
-                        duration: this._interface.get_boolean('enable-animations') ? 260 : 0,
+                    duration: this._interface.get_boolean('enable-animations') ? 220 : 0,
                         mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
                 }
-                this._root.add_child(eventLabel);
+                expandedBody.add_child(eventLabel);
             } else if (match?.home_penalties != null) {
-                this._root.add_child(this._label(`PK  ${match.home_penalties} : ${match.away_penalties}`, 'archsport-event'));
+                expandedBody.add_child(this._label(`PK  ${match.home_penalties} : ${match.away_penalties}`, 'archsport-event'));
             }
             if (this._expanded) {
                 const context = data.context ?? {};
@@ -375,7 +410,7 @@ export default class Archsport extends Extension {
                     const liveTitle = new St.BoxLayout({style_class: 'archsport-section-title'});
                     liveTitle.add_child(new St.Icon({icon_name: 'media-record-symbolic', icon_size: 12}));
                     liveTitle.add_child(this._label('다른 진행 경기', 'archsport-caption'));
-                    this._root.add_child(liveTitle);
+                    expandedBody.add_child(liveTitle);
                     for (const fixture of otherLive.slice(0, 2)) {
                         const row = new St.BoxLayout({style_class: 'archsport-fixture-row'});
                         row.add_child(this._label(`${fixture.elapsed ?? ''}′`, 'archsport-date'));
@@ -385,14 +420,14 @@ export default class Archsport extends Extension {
                         }
                         row.add_child(this._label(`${fixture.home}  ${spoiler ? '● : ●' : `${fixture.home_score ?? '–'} : ${fixture.away_score ?? '–'}`}  ${fixture.away}`,
                             'archsport-context-text'));
-                        this._root.add_child(row);
+                        expandedBody.add_child(row);
                     }
                 }
                 if (upcomingMatches.length) {
                     const nextTitle = new St.BoxLayout({style_class: 'archsport-section-title'});
                     nextTitle.add_child(new St.Icon({icon_name: 'x-office-calendar-symbolic', icon_size: 14}));
                     nextTitle.add_child(this._label('다음 경기', 'archsport-caption'));
-                    this._root.add_child(nextTitle);
+                    expandedBody.add_child(nextTitle);
                 }
                 for (const upcoming of upcomingMatches) {
                     const nextRow = new St.BoxLayout({style_class: 'archsport-fixture-row'});
@@ -404,14 +439,14 @@ export default class Archsport extends Extension {
                         if (crest) nextRow.add_child(crest);
                     }
                     nextRow.add_child(this._label(`${upcoming.home} — ${upcoming.away}`, 'archsport-context-text'));
-                    this._root.add_child(nextRow);
+                    expandedBody.add_child(nextRow);
                 }
                 if (recent.length) {
                     const recentTitle = new St.BoxLayout({style_class: 'archsport-section-title'});
                     recentTitle.add_child(new St.Icon({icon_name: 'document-open-recent-symbolic', icon_size: 14}));
                     recentTitle.add_child(this._label('최근 경기', 'archsport-caption'));
                     recentTitle.add_child(new St.Label({text: String(recent.length), style_class: 'archsport-count'}));
-                    this._root.add_child(recentTitle);
+                    expandedBody.add_child(recentTitle);
                 }
                 for (const fixture of recent) {
                     const result = spoiler ? '● : ●' : `${fixture.home_score ?? '–'} : ${fixture.away_score ?? '–'}`;
@@ -423,7 +458,7 @@ export default class Archsport extends Extension {
                         if (crest) fixtureRow.add_child(crest);
                     }
                     fixtureRow.add_child(this._label(`${fixture.home}  ${result}  ${fixture.away}`, 'archsport-context-text'));
-                    this._root.add_child(fixtureRow);
+                    expandedBody.add_child(fixtureRow);
                 }
                 if (stats?.available) {
                     const values = (stats.team_order ?? []).map(id => stats.values[id] ?? {});
@@ -433,33 +468,42 @@ export default class Archsport extends Extension {
                     statsRow.add_child(this._label(`슈팅 ${statValue('Total Shots')}`, 'archsport-stat'));
                     statsRow.add_child(this._label(`유효 ${statValue('Shots on Goal')}`, 'archsport-stat'));
                     statsRow.add_child(this._label(`코너 ${statValue('Corner Kicks')}`, 'archsport-stat'));
-                    this._root.add_child(statsRow);
+                    expandedBody.add_child(statsRow);
                 }
                 if (!upcomingMatches.length && !recent.length && !match) {
                     const empty = new St.BoxLayout({style_class: 'archsport-empty'});
                     empty.add_child(new St.Icon({icon_name: data.health === 'error' ? 'dialog-warning-symbolic' : 'x-office-calendar-symbolic', icon_size: 18}));
                     empty.add_child(this._label(data.health === 'error' ? '연결 후 일정 표시' : '일정 · 최근 기록 없음', 'archsport-context-text'));
-                    this._root.add_child(empty);
+                    expandedBody.add_child(empty);
                 }
                 if (context.schedule_notice) {
                     const limit = new St.BoxLayout({style_class: 'archsport-context-row'});
                     limit.add_child(new St.Icon({icon_name: 'dialog-information-symbolic', icon_size: 14}));
                     limit.add_child(this._label('일정 지연 가능 · 경기별 스탯 없음', 'archsport-caption'));
-                    this._root.add_child(limit);
+                    expandedBody.add_child(limit);
                 }
             }
+            expandedScroll = new St.ScrollView({style_class: 'archsport-scroll', x_expand: true,
+                y_expand: false, hscrollbar_policy: St.PolicyType.NEVER,
+                vscrollbar_policy: St.PolicyType.AUTOMATIC});
+            expandedScroll.set_child(expandedBody);
+            this._root.add_child(expandedScroll);
         }
         const expandedPanel = this._expanded || Boolean(alert);
         const width = Math.min(expandedPanel ? 520 : 280, Math.max(1, (this._monitor()?.width ?? 800) - 24));
         if (expandedPanel) {
+            const monitor = this._monitor();
+            let panelHeight = 0;
+            try {
+                if (monitor === Main.layoutManager.primaryMonitor) panelHeight = Main.panel.height;
+            } catch (_error) {}
             const contentWidth = Math.max(1, width - 40);
-            const children = this._root.get_children();
-            const childHeight = children.reduce((sum, child) => {
-                const [, natural] = child.get_preferred_height(contentWidth);
-                return sum + natural;
-            }, 0);
-            this._contentHeight = Math.min(this._expanded ? 370 : 180, Math.max(96,
-                Math.ceil(childHeight + Math.max(0, children.length - 1) * 8 + 27)));
+            const [, headerNatural] = expandedHeader.get_preferred_height(contentWidth);
+            const [, bodyNatural] = expandedBody.get_preferred_height(contentWidth);
+            const viewport = calculateExpandedViewport({monitorHeight: monitor?.height ?? 800,
+                panelHeight, headerHeight: headerNatural, contentHeight: bodyNatural});
+            expandedScroll.set_height(viewport.bodyHeight);
+            this._contentHeight = viewport.rootHeight;
         } else {
             this._contentHeight = 46;
         }
@@ -562,14 +606,20 @@ export default class Archsport extends Extension {
         this._timer = 0;
         if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
         this._sleepSubscription = 0;
-        for (const [object, id] of this._signals ?? []) object.disconnect(id);
+        for (const [object, id] of this._signals ?? []) {
+            try { object.disconnect(id); } catch (_error) { /* object was disposed during Shell shutdown */ }
+        }
         this._signals = [];
         this._dock?.destroy();
-        if (this._root) Main.layoutManager.removeChrome(this._root);
-        this._root?.destroy();
-        if (this._indicator) {
-            if (Main.panel.statusArea[this.uuid] === this._indicator) Main.panel.statusArea[this.uuid] = null;
-            this._indicator.destroy();
+        if (!this._shellEnding && this._root) {
+            try { Main.layoutManager.removeChrome(this._root); } catch (_error) {}
+            try { this._root.destroy(); } catch (_error) {}
+        }
+        if (!this._shellEnding && this._indicator) {
+            try {
+                if (Main.panel.statusArea[this.uuid] === this._indicator) Main.panel.statusArea[this.uuid] = null;
+                this._indicator.destroy();
+            } catch (_error) { /* Shell already owns actor disposal */ }
         }
         this._root = this._indicator = this._settings = this._interface = this._payload = this._dock = null;
     }

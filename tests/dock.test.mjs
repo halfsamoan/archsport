@@ -1,10 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {DOCK_PROTOCOL, layoutNotches, canClaim} from '../extension/dockModel.js';
+import {DOCK_PROTOCOL, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
+    classifyOutsideSurface, dispatchOutsideDismiss} from '../extension/dockModel.js';
+import {calculateExpandedViewport} from '../extension/uiModel.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from '../extension/alertQueue.js';
 
 test('sport and memory notches share a centered row', () => {
-    assert.equal(DOCK_PROTOCOL, 2);
+    assert.equal(DOCK_PROTOCOL, 3);
     const [sport, memory] = layoutNotches([
         {id: 'archsport', width: 360, order: 0},
         {id: 'matci', width: 220, order: 1},
@@ -22,6 +24,71 @@ test('manual memory review keeps priority over sport event', () => {
     ], {x: 0, y: 0, width: 600, panelHeight: 32});
     assert.equal(sport.fallback, true);
     assert.equal(memory.fallback, false);
+});
+
+test('equal-priority manual open follows last-toggle ownership', () => {
+    assert.equal(canClaim({id: 'matci', priority: 100}, 'archsport', 100), true);
+});
+
+test('outside primary and secondary clicks dismiss while preserving other targets', () => {
+    let dismissed = 0;
+    for (const button of [1, 3]) {
+        assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4, button,
+            active: true, expanded: true}, () => dismissed++), true);
+    }
+    assert.equal(dismissed, 2);
+    for (const input of [
+        {eventType: 5, buttonPressType: 4, active: true, expanded: true},
+        {eventType: 4, buttonPressType: 4, active: false, expanded: true},
+        {eventType: 4, buttonPressType: 4, active: true, expanded: false},
+        {eventType: 4, buttonPressType: 4, active: true, expanded: true, insideDock: true},
+    ]) {
+        assert.equal(dispatchOutsideDismiss(input, () => dismissed++), false);
+    }
+    assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4,
+        active: true, expanded: true}, () => dismissed++, {insideOwnerTrigger: true}), false);
+    assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4,
+        active: true, expanded: true}, () => {}, {insideOwnerTrigger: false}), true);
+    assert.equal(dismissed, 2);
+});
+
+test('outside-click hit testing includes descendant controls and blank actor bounds', () => {
+    const root = {get_parent: () => null,
+        get_transformed_position: () => [100, 20], get_transformed_size: () => [400, 80]};
+    const button = {get_parent: () => root};
+    assert.equal(isActorWithin(button, root), true);
+    assert.equal(isPointWithinActor(root, 101, 21), true);
+    assert.equal(isPointWithinActor(root, 500, 100), true);
+    assert.equal(isPointWithinActor(root, 501, 100), false);
+});
+
+test('only the active notch trigger is exempt from outside dismissal', () => {
+    const actor = (x, y, width, height, parent = null) => ({get_parent: () => parent,
+        get_transformed_position: () => [x, y], get_transformed_size: () => [width, height]});
+    const dock = actor(100, 20, 400, 80);
+    const ownerTrigger = actor(20, 0, 50, 32);
+    const otherTrigger = actor(600, 0, 50, 32);
+    const ownerClick = classifyOutsideSurface({dockActor: dock, ownerTrigger,
+        eventSource: actor(25, 5, 5, 5, ownerTrigger), x: 30, y: 10});
+    assert.deepEqual(ownerClick, {insideDock: false, insideOwnerTrigger: true});
+    const otherClick = classifyOutsideSurface({dockActor: dock, ownerTrigger,
+        eventSource: actor(605, 5, 5, 5, otherTrigger), x: 610, y: 10});
+    assert.deepEqual(otherClick, {insideDock: false, insideOwnerTrigger: false});
+    assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4, active: true,
+        expanded: true}, () => {}, otherClick), true);
+});
+
+test('expanded fixture list scrolls within the monitor while short content stays compact', () => {
+    const short = calculateExpandedViewport({monitorHeight: 900, panelHeight: 32,
+        headerHeight: 40, contentHeight: 100});
+    assert.equal(short.bodyHeight, 100);
+    assert.equal(short.rootHeight, 182);
+    assert.equal(short.scrollable, false);
+    const long = calculateExpandedViewport({monitorHeight: 450, panelHeight: 32,
+        headerHeight: 44, contentHeight: 900});
+    assert.equal(long.bodyHeight, 308);
+    assert.equal(long.rootHeight, 394);
+    assert.equal(long.scrollable, true);
 });
 
 test('sport event stays queued while memory review owns the notch', () => {

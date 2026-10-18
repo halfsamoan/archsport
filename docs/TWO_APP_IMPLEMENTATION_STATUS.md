@@ -9,12 +9,14 @@
 |---|---|---|
 | 역할 | Barcelona·Lazio·Como 축구 일정, 경기 중 점수·이벤트, 노치 알림 | 시스템 RAM·앱 메모리 관찰, 사용자가 고른 앱 창의 정상 닫기 요청 |
 | 구조 | GNOME Shell 확장 + Python worker + football-data.org 일정 + API-Football 라이브 | GNOME Shell 확장 + Python `/proc` worker + UID 범위 SQLite 기록 |
-| 소스 버전 | 11 | 8 |
-| 현재 GNOME 상태(2026-10-19 재로그인 후) | 설치/GJS v11 ACTIVE; worker 1개; 적용 대기 없음 | 설치/GJS v8 ACTIVE; worker 1개; 적용 대기 없음 |
-| 자동 검증 | Python 65/65, Node 6/6, ESLint 오류 0, strict schema 통과 | Python 51/51, Node 22/22, ESLint 오류 0, strict schema 통과 |
+| 소스 버전 | 12 | 9 |
+| 현재 GNOME 상태(2026-10-19 확인) | 설치/GJS v11 ACTIVE; workspace v12는 GitHub 반영 후 새 UI 적용 검수 대기 | 설치/GJS v8 ACTIVE; workspace v9는 GitHub 반영 후 새 UI 적용 검수 대기 |
+| 자동 검증 | Python 65/65, Node 11/11, ESLint 0 errors, strict schema 통과 | Python 51/51, Node 26/26, ESLint 0 errors, strict schema 통과 |
 | 실기 범위 | football-data 일정 3개·최근 결과 5개, API-Football 라이브 경기 1개 수신 확인; v11 worker 실행 확인. 새 버전의 화면 모양·실제 알림은 시각 검수 전 | 현재 Ubuntu `/proc` smoke 통과; 실제 GUI 창 닫기와 두 노치 배치는 미검증 |
 
 두 코드는 별도 저장소다. Archsport는 `/home/k/workspace/arch/archsport`, matci는 `/home/k/workspace/arch/matci`에 있다. 두 앱은 Python worker나 SQLite를 공유하지 않는다. GNOME Shell의 작은 노치 배치 등록부만 공유한다.
+
+2026-10-19 UI/수명주기 변경과 제한된 PNG 캡처 분석은 [디자인 검토 보고서](docs/design-review/2026-10-19-review.md)를 따른다. 현재 실행 중인 GNOME 확장은 이전 설치 버전이다. 사용자 로그아웃/재로그인 없이 저장소 소스를 갱신했으므로 실제 GJS 화면·입력·종료 동작은 아직 새 코드 검수가 아니다.
 
 ## 목표와 결정
 
@@ -203,12 +205,14 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 | 저장소 | 검사 | 결과 |
 |---|---|---|
 | Archsport | `python3 -m unittest discover -s tests -v` | 65/65 통과 |
-| Archsport | `node --test tests/dock.test.mjs` | 6/6 통과: 노치 배치, 수동 우선권, 알림 대기·만료·복원 |
+| Archsport | `node --test tests/dock.test.mjs` | 11/11 통과: 노치 배치, owner/outside hit test, 모니터 높이 스크롤, 알림 대기·만료·복원 |
+| Archsport | `npx eslint@9 --no-config-lookup -c eslint.config.mjs extension/*.js` | 오류 0, 경고 39개(미사용 catch 매개변수) |
 | Archsport | `node --check extension/extension.js`, `prefs.js` | 통과 |
 | Archsport | `glib-compile-schemas --strict --dry-run extension/schemas` | 통과 |
 | Archsport | `git diff --check` | 통과 |
 | matci | `python3 -m unittest discover -s tests -v` | 51/51 통과 |
-| matci | `node --test tests/dock.test.mjs tests/native-actions.test.mjs tests/native-worker.integration.test.mjs` | 22/22 통과 |
+| matci | `node --test tests/*.mjs` | 26/26 통과 |
+| matci | `npx eslint@9 --no-config-lookup -c eslint.config.mjs extension/*.js` | 오류 0, 경고 38개(미사용 catch 매개변수) |
 | matci | GJS/prefs 구문 검사와 strict schema dry-run | 통과 |
 | matci | `python3 tools/smoke_worker.py` | live `/proc` 179 processes, memory valid, PSI available; GNOME runtime 아님 |
 
@@ -224,7 +228,7 @@ Node 검사 경고는 `.js` 파일이 Node package의 `type=module`로 선언되
 
 ## 설치·현재 세션 상태
 
-2026-10-19 재로그인 후 GNOME Shell 50.1 / Wayland에서 설치 경로와 GJS 버전이 Archsport v11, matci v8로 일치하고 두 확장 모두 `ACTIVE`다. 각 Python worker가 1개 실행 중이며 doctor는 `pending_relogin=false`; matci lock은 보유 상태다. Archsport doctor는 API 키 파일 존재만 확인했으며 API 요청을 실행하지 않았다.
+2026-10-19 재로그인 후 GNOME Shell 50.1에서 설치 경로와 실행 GJS 버전이 Archsport v11, matci v8로 일치하고 두 확장 모두 `ACTIVE`다. 이 turn에서 `gnome-extensions info`로 해당 버전/상태를 재확인했다. workspace 소스는 이제 v12/v9이며, 두 확장 UI를 다시 로드하지 않았다.
 
 이전 Shell 종료 로그에는 matci v7의 UI actor가 이미 dispose된 뒤 callback에서 접근했다는 경고가 남았다. 새 Shell의 확장 활성 상태와 worker 실행은 확인됐지만 화면 모양과 입력 반응은 별도 시각 검수가 아니다. 새 Shell 시작 뒤 수집한 로그에서는 두 확장의 새 오류를 확인하지 못했다.
 
@@ -232,7 +236,7 @@ Node 검사 경고는 `.js` 파일이 Node package의 `type=module`로 선언되
 
 | 우선순위 | 미완료 항목 | 완료 증거 |
 |---|---|---|
-| P0 | staged Archsport v11·matci v8을 GNOME Shell 50.1에서 실제 화면/입력으로 검수 | 다음 Shell 시작 후 양 확장 source hash와 ACTIVE 버전, worker 수, 노치/일정/경기 상태 스크린샷, 오류 로그 확인 |
+| P0 | staged Archsport v12·matci v9을 GNOME Shell 50.1에서 실제 화면/입력으로 검수 | 사용자 작업창을 닫지 않는 안전한 확장 재적용 뒤 양 확장 source hash와 ACTIVE 버전, 노치/일정/경기 상태 스크린샷, 오류 로그 확인 |
 | P0 | matci 일반 창 닫기 실제 동작 | 저장하지 않은 대화상자 취소, 창 거부, 창 닫힘, background process 잔존을 Ubuntu에서 직접 확인 |
 | P1 | 경기 알림 priority queue 실기 | matci를 수동으로 연 동안 골/킥오프 알림 발생 후 matci 닫은 뒤 Archsport가 표시되는지 확인 |
 | P1 | 지난 경기 세부 스탯 | football-data.org 무료 데이터는 점수까지만 제공하고 실제 API-Football key는 2025시즌 fixture 조회를 거절했다. 현재 무료 key가 허용하는 시즌 범위를 확인하거나 다른 사용 허가된 공급원을 확보해야 구현 가능 |

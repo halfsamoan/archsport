@@ -13,36 +13,41 @@
 .archsport-compact { spacing: 12px; }
 .archsport-compact-button { height: 32px; padding: 0; border-radius: 18px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: #171a1e; }
+.archsport-compact-button:active { background-color: #232a31; }
 .archsport-compact-button:focus { box-shadow: inset 0 0 0 2px rgba(141, 227, 192, 0.7); }
-.archsport-live, .archsport-alert { color: #8de3c0; font-size: 11px; font-weight: 600; }
+.archsport-live, .archsport-alert { color: #8de3c0; font-size: 12px; font-weight: 600; }
 .archsport-team { color: #f5f7fa; font-weight: 700; font-size: 15px; }
-.archsport-team-name { color: #e9edf2; font-size: 11px; font-weight: 600; }
+.archsport-team-name { color: #e9edf2; font-size: 12px; font-weight: 600; }
 .archsport-score { color: #fff; font-size: 30px; font-weight: 800; }
-.archsport-caption { color: #b7bdc7; font-size: 11px; }
+.archsport-caption { color: #c4cad3; font-size: 12px; }
 .archsport-event { color: #f5f7fa; font-size: 13px; font-weight: 600; }
 .archsport-header, .archsport-identity, .archsport-tools, .archsport-scoreboard,
 .archsport-side, .archsport-context-row, .archsport-section-title,
 .archsport-fixture-row, .archsport-stats, .archsport-state-live,
 .archsport-state-stale { spacing: 9px; }
+.archsport-body { spacing: 8px; }
+.archsport-scroll { min-height: 0; border-radius: 12px; }
+.archsport-scroll StScrollBar { -slider-width: 4px; }
 .archsport-header { min-height: 32px; }
 .archsport-identity { spacing: 8px; }
-.archsport-brand { color: #f5f7fa; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; }
+.archsport-brand { color: #f5f7fa; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; }
 .archsport-icon-button { width: 32px; height: 32px; color: #e8edf3; border-radius: 16px; background-color: #20242b; }
 .archsport-icon-button:hover { background-color: #303640; }
+.archsport-icon-button:active { background-color: #3a424d; }
 .archsport-icon-button:focus { box-shadow: inset 0 0 0 2px #8de3c0; }
 .archsport-scoreboard { min-height: 64px; spacing: 18px; }
 .archsport-side { spacing: 8px; }
 .archsport-context-row { min-height: 30px; padding: 2px 0; }
 .archsport-context-row StIcon { color: #8de3c0; }
-.archsport-context-text { color: #f0f2f5; font-size: 11px; }
+.archsport-context-text { color: #f0f2f5; font-size: 12px; }
 .archsport-section-title { min-height: 22px; color: #b7bdc7; }
 .archsport-section-title StIcon { color: #9da6b2; }
-.archsport-count { color: #c9ced7; background-color: #20242b; border-radius: 9px; padding: 2px 7px; font-size: 9px; }
+.archsport-count { color: #c9ced7; background-color: #20242b; border-radius: 9px; padding: 2px 7px; font-size: 10px; }
 .archsport-empty { min-height: 32px; spacing: 9px; color: #aeb6c1; }
 .archsport-empty StIcon { color: #8de3c0; }
-.archsport-date { min-width: 58px; color: #9da6b2; font-size: 10px; }
+.archsport-date { min-width: 58px; color: #aab2bd; font-size: 12px; }
 .archsport-fixture-row { min-height: 22px; spacing: 8px; }
 .archsport-stats { min-height: 28px; spacing: 12px; }
-.archsport-stat { color: #d9dee6; font-size: 10px; }
+.archsport-stat { color: #d9dee6; font-size: 12px; }
 .archsport-state-live { color: #8de3c0; }
 .archsport-state-stale { color: #f0c57a; }
