@@ -12,5 +12,7 @@ jobs:
       - run: glib-compile-schemas --strict --dry-run extension/schemas
       - run: node --check extension/extension.js
       - run: node --check extension/prefs.js
+      - run: node --check extension/notchDock.js
+      - run: node --test tests/dock.test.mjs
       - run: node --check web/app.js
       - run: python -m archsport --demo --once

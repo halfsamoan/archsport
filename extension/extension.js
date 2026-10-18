@@ -6,6 +6,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import {DockParticipant} from './notchDock.js';
 
 const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'poll-seconds', 'daily-budget', 'key-revision']);
 const STATUS = {live: '진행 중', halftime: 'HT', finished: 'FT', scheduled: '경기 전',
@@ -28,7 +29,9 @@ export default class Archsport extends Extension {
         this._root = new St.BoxLayout({vertical: true, style_class: 'archsport-notch',
             reactive: true, can_focus: true, width: 336, height: 46,
             accessible_name: 'Archsport 경기 노치', clip_to_allocation: true});
-        this._root.connect('notify::width', () => this._place());
+        this._dock = new DockParticipant({id: this.uuid, actor: this._root,
+            monitor: () => this._monitor(), order: 0,
+            onYield: () => { this._expanded = false; this._activeAlert = null; this._render(); }});
         const toggle = () => {
             this._expanded = this._activeAlert ? false : !this._expanded;
             this._activeAlert = null;
@@ -54,8 +57,9 @@ export default class Archsport extends Extension {
         this._indicator.menu.addAction('데이터 다시 연결', () => this._restartWorker());
         Main.panel.addToStatusArea(this.uuid, this._indicator);
         this._connect(Main.layoutManager, 'monitors-changed', () => this._place());
-        this._connect(Main.overview, 'showing', () => this._root.hide());
+        this._connect(Main.overview, 'showing', () => this._dock.update({visible: false}));
         this._connect(Main.overview, 'hidden', () => this._visibility());
+        this._connect(Main.sessionMode, 'updated', () => this._visibility());
         this._connect(global.display, 'in-fullscreen-changed', () => this._visibility());
         this._connect(this._settings, 'changed', (_settings, key) => {
             if (DATA_KEYS.has(key)) this._restartWorker();
@@ -85,10 +89,6 @@ export default class Archsport extends Extension {
 
     _place() {
         if (!this._root || !this._settings) return;
-        const monitor = this._monitor();
-        if (!monitor) return;
-        const top = monitor === Main.layoutManager.primaryMonitor ? Main.panel.height : 0;
-        this._root.set_position(Math.round(monitor.x + (monitor.width - this._root.width) / 2), monitor.y + top);
         this._visibility();
     }
 
@@ -98,7 +98,8 @@ export default class Archsport extends Extension {
         const allowed = this._settings.get_boolean('show-notch') && this._payload.visible !== false;
         const upcoming = match?.status !== 'scheduled' || this._settings.get_boolean('show-upcoming');
         const fullscreen = this._settings.get_boolean('hide-fullscreen') && this._monitor()?.inFullscreen;
-        this._root.visible = allowed && upcoming && !Main.overview.visible && !fullscreen;
+        this._dock?.update({visible: allowed && upcoming && !Main.overview.visible &&
+            !Main.sessionMode.isLocked && !fullscreen});
     }
 
     _label(text, style) {
@@ -136,7 +137,12 @@ export default class Archsport extends Extension {
             clock = `${new Date(match.kickoff_utc).toLocaleString()} 시작`;
         }
         const health = data.health === 'error' ? '연결 오류 · 마지막 정보' : clock;
-        const expanded = this._expanded || Boolean(alert);
+        let expanded = this._expanded || Boolean(alert);
+        if (expanded && !this._dock.state.expanded && !this._dock.claim(alert ? 80 : 100)) {
+            // A manually opened companion review owns focus; keep this update compact.
+            this._expanded = false;
+            expanded = false;
+        }
         if (!expanded) {
             const row = new St.BoxLayout({style_class: 'archsport-compact',
                 x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.CENTER});
@@ -170,7 +176,8 @@ export default class Archsport extends Extension {
         this._root.remove_all_transitions();
         this._root.ease({width, height: expanded ? 250 : 46,
             duration: this._interface.get_boolean('enable-animations') ? 320 : 0,
-            mode: Clutter.AnimationMode.EASE_OUT_CUBIC, onComplete: () => this._place()});
+            mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+        this._dock.update({width, height: expanded ? 250 : 46, expanded});
         this._place();
         this._root.accessible_name = `Archsport ${source}. ${match?.home ?? ''} ${score} ${match?.away ?? ''}. ${health}`;
         if (alert) this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(1, Math.round(this._alertDeadline - now)), () => {
@@ -252,6 +259,8 @@ export default class Archsport extends Extension {
         this._sleepSubscription = 0;
         for (const [object, id] of this._signals ?? []) object.disconnect(id);
         this._signals = [];
+        this._dock?.destroy();
+        this._dock = null;
         if (this._root) Main.layoutManager.removeChrome(this._root);
         this._root?.destroy();
         this._indicator?.destroy();
