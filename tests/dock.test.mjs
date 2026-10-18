@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {DOCK_PROTOCOL, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
+import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
     classifyOutsideSurface, dispatchOutsideDismiss} from '../extension/dockModel.js';
 import {calculateExpandedViewport} from '../extension/uiModel.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from '../extension/alertQueue.js';
@@ -30,7 +30,13 @@ test('equal-priority manual open follows last-toggle ownership', () => {
     assert.equal(canClaim({id: 'matci', priority: 100}, 'archsport', 100), true);
 });
 
-test('outside primary and secondary clicks dismiss while preserving other targets', () => {
+test('button extraction supports direct and tuple GI return values', () => {
+    assert.equal(buttonNumber(1), 1);
+    assert.equal(buttonNumber([true, 3]), 3);
+    assert.equal(buttonNumber([false, 0]), 0);
+});
+
+test('only outside primary and secondary clicks dismiss while preserving other targets', () => {
     let dismissed = 0;
     for (const button of [1, 3]) {
         assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4, button,
@@ -38,16 +44,19 @@ test('outside primary and secondary clicks dismiss while preserving other target
     }
     assert.equal(dismissed, 2);
     for (const input of [
+        ...[2, 4, 5].map(button => ({eventType: 4, buttonPressType: 4, button,
+            active: true, expanded: true})),
         {eventType: 5, buttonPressType: 4, active: true, expanded: true},
         {eventType: 4, buttonPressType: 4, active: false, expanded: true},
         {eventType: 4, buttonPressType: 4, active: true, expanded: false},
-        {eventType: 4, buttonPressType: 4, active: true, expanded: true, insideDock: true},
+        {eventType: 4, buttonPressType: 4, button: 1,
+            active: true, expanded: true, insideDock: true},
     ]) {
         assert.equal(dispatchOutsideDismiss(input, () => dismissed++), false);
     }
-    assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4,
+    assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4, button: 1,
         active: true, expanded: true}, () => dismissed++, {insideOwnerTrigger: true}), false);
-    assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4,
+    assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4, button: 1,
         active: true, expanded: true}, () => {}, {insideOwnerTrigger: false}), true);
     assert.equal(dismissed, 2);
 });
@@ -74,7 +83,7 @@ test('only the active notch trigger is exempt from outside dismissal', () => {
     const otherClick = classifyOutsideSurface({dockActor: dock, ownerTrigger,
         eventSource: actor(605, 5, 5, 5, otherTrigger), x: 610, y: 10});
     assert.deepEqual(otherClick, {insideDock: false, insideOwnerTrigger: false});
-    assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4, active: true,
+    assert.equal(dispatchOutsideDismiss({eventType: 4, buttonPressType: 4, button: 1, active: true,
         expanded: true}, () => {}, otherClick), true);
 });
 

@@ -2,7 +2,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import {DOCK_PROTOCOL, layoutNotches, canClaim, isActorWithin, isPointWithinActor, classifyOutsideSurface,
+import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, classifyOutsideSurface,
     shouldDismissOutside, dispatchOutsideDismiss} from './dockModel.js';
 
 // One registry and one capture-phase listener for the two independently installed extensions.
@@ -15,9 +15,9 @@ function layoutSourceHash() {
     const contract = [`protocol=${DOCK_PROTOCOL}`, `open=${OPEN_MS}`, `close=${CLOSE_MS}`,
         disconnectCapture, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
         classifyOutsideSurface, shouldDismissOutside, dispatchOutsideDismiss,
-        eventCoordinates, hideActor, showActor, insideActiveSurface, getDock, DockParticipant]
+        eventCoordinates, buttonNumber, hideActor, showActor, insideActiveSurface, getDock, DockParticipant]
         .map(fn => typeof fn === 'string' ? fn : fn.toString()).join('|');
-    for (const char of `${contract}|capture-dismiss-v3|motion-v1`) {
+    for (const char of `${contract}|capture-dismiss-v4|motion-v1`) {
         hash ^= char.charCodeAt(0);
         hash = Math.imul(hash, 16777619);
     }
@@ -211,7 +211,7 @@ function getDock() {
             try {
                 dispatchOutsideDismiss({eventType: event.type(),
                     buttonPressType: Clutter.EventType.BUTTON_PRESS, active: Boolean(dock.active),
-                    expanded: owner.state.visible && owner.state.expanded},
+                    button: buttonNumber(event.get_button()), expanded: owner.state.visible && owner.state.expanded},
                 () => owner.onOutside?.(), inside ?? {});
             } catch (error) {
                 console.warn(`[notchDock] outside dismissal failed: ${error.message}`);

@@ -1,6 +1,11 @@
 // Pure geometry shared by the native dock, web preview, and Node checks.
 export const DOCK_PROTOCOL = 3;
 
+export function buttonNumber(result) {
+    if (Array.isArray(result)) return result[1] ?? 0;
+    return result ?? 0;
+}
+
 export function canClaim(active, id, priority) {
     return !active || active.id === id || priority >= active.priority;
 }
@@ -36,8 +41,9 @@ export function classifyOutsideSurface({dockActor, ownerTrigger, eventSource, x,
 }
 
 export function shouldDismissOutside({eventType, buttonPressType, active, expanded,
-    insideDock = false, insideOwnerTrigger = false}) {
-    return eventType === buttonPressType && Boolean(active && expanded) &&
+    button, insideDock = false, insideOwnerTrigger = false}) {
+    return eventType === buttonPressType && (button === 1 || button === 3) &&
+        Boolean(active && expanded) &&
         !insideDock && !insideOwnerTrigger;
 }
 
