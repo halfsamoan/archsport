@@ -10,9 +10,9 @@
 | 역할 | Barcelona·Lazio·Como 축구 일정, 경기 중 점수·이벤트, 노치 알림 | 시스템 RAM·앱 메모리 관찰, 사용자가 고른 앱 창의 정상 닫기 요청 |
 | 구조 | GNOME Shell 확장 + Python worker + football-data.org 일정 + API-Football 라이브 | GNOME Shell 확장 + Python `/proc` worker + UID 범위 SQLite 기록 |
 | 소스 버전 | 11 | 8 |
-| 현재 GNOME 상태(2026-10-19 재확인) | v11 staged; 설치 경로 v10; Extension Manager는 GJS v7·Enabled Yes·INACTIVE 보고; worker 0개 | v8 staged; 설치 경로 v7; Extension Manager는 GJS v7·Enabled Yes·INACTIVE 보고; worker 0개 |
+| 현재 GNOME 상태(2026-10-19 재로그인 후) | 설치/GJS v11 ACTIVE; worker 1개; 적용 대기 없음 | 설치/GJS v8 ACTIVE; worker 1개; 적용 대기 없음 |
 | 자동 검증 | Python 65/65, Node 6/6, ESLint 오류 0, strict schema 통과 | Python 51/51, Node 22/22, ESLint 오류 0, strict schema 통과 |
-| 실기 범위 | football-data 일정 3개·최근 결과 5개, API-Football 라이브 경기 1개 수신 확인; 설치 경로 v10 화면과 실제 알림은 미검증. 현재 활성 GJS는 v7 | 현재 Ubuntu `/proc` smoke 통과; 실제 GUI 창 닫기와 두 노치 배치는 미검증 |
+| 실기 범위 | football-data 일정 3개·최근 결과 5개, API-Football 라이브 경기 1개 수신 확인; v11 worker 실행 확인. 새 버전의 화면 모양·실제 알림은 시각 검수 전 | 현재 Ubuntu `/proc` smoke 통과; 실제 GUI 창 닫기와 두 노치 배치는 미검증 |
 
 두 코드는 별도 저장소다. Archsport는 `/home/k/workspace/arch/archsport`, matci는 `/home/k/workspace/arch/matci`에 있다. 두 앱은 Python worker나 SQLite를 공유하지 않는다. GNOME Shell의 작은 노치 배치 등록부만 공유한다.
 
@@ -224,9 +224,9 @@ Node 검사 경고는 `.js` 파일이 Node package의 `type=module`로 선언되
 
 ## 설치·현재 세션 상태
 
-2026-10-19 기준 GNOME Shell 50.1 / Wayland다. Archsport v11과 matci v8은 각각 `gnome-shell/extension-updates/<UUID>`에 staging했고, 이전 설치를 state backup에 보관했다. `pending-relogin.json` 두 개가 mode 0600이며 doctor는 양쪽 모두 `pending_relogin=true`를 보고한다. 기존 설치 경로는 Archsport v10, matci v7이다. 이번 최종 확인에서 Extension Manager는 두 확장 모두 캐시 GJS v7, `Enabled: Yes`, `State: INACTIVE`를 보고했고 worker도 0개였다. 같은 시점에 `cornro`, `focus-monitor`, Ubuntu Dock도 `INACTIVE`였으며 사용자 확장 전체 비활성화 설정은 꺼져 있었다. 비활성 원인은 현재 증거로 특정하지 못했다. 로그아웃이나 Shell 재시작은 하지 않았다.
+2026-10-19 재로그인 후 GNOME Shell 50.1 / Wayland에서 설치 경로와 GJS 버전이 Archsport v11, matci v8로 일치하고 두 확장 모두 `ACTIVE`다. 각 Python worker가 1개 실행 중이며 doctor는 `pending_relogin=false`; matci lock은 보유 상태다. Archsport doctor는 API 키 파일 존재만 확인했으며 API 요청을 실행하지 않았다.
 
-사용자가 로그아웃하면 열린 데스크톱 앱이 종료된다고 밝혔으므로 실제 GNOME 세션 재시작은 하지 않았다. 다음 로그인 때 GNOME이 v11/v8을 적용한 뒤 화면·입력 수용 검수가 필요하다. 현재 화면이 새 버전이라고 기록하지 않는다.
+이전 Shell 종료 로그에는 matci v7의 UI actor가 이미 dispose된 뒤 callback에서 접근했다는 경고가 남았다. 새 Shell의 확장 활성 상태와 worker 실행은 확인됐지만 화면 모양과 입력 반응은 별도 시각 검수가 아니다. 새 Shell 시작 뒤 수집한 로그에서는 두 확장의 새 오류를 확인하지 못했다.
 
 ## 미완료·위험과 다음 작업
 
