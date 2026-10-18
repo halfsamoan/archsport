@@ -6,13 +6,19 @@ import time
 from pathlib import Path
 
 from .assets import LogoCache
+from .composite import CompositeProvider
 from .engine import Store
-from .provider import ApiFootball, DemoProvider, ProviderError
+from .provider import DemoProvider, ProviderError
 from .service import Worker
+from .teams import WATCHED_TEAMS, normalize_watch_list
 
 DEFAULT = {'mode': 'live', 'team_name': 'Barcelona', 'team_country': 'Spain',
-           'team_id': None, 'poll_seconds': 120, 'daily_budget': 90,
+           'team_id': None, 'poll_seconds': 300, 'daily_budget': 90,
+           'key_revision': 0,
+           'watch_teams': list(WATCHED_TEAMS),
            'key_file': str(Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) / 'archsport/api-key')}
+DEFAULT['football_data_key_file'] = str(Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config')) /
+                                        'archsport/football-data-token')
 
 
 class ErrorProvider:
@@ -31,11 +37,15 @@ def read_config(args):
         value = getattr(args, key)
         if value is not None:
             config[key] = value
+    if args.watch_teams is not None:
+        config['watch_teams'] = [name.strip() for name in args.watch_teams.split(',') if name.strip()]
+    config['watch_teams'] = normalize_watch_list(config.get('watch_teams'))
+    config['key_revision'] = max(0, int(args.key_revision))
     if args.demo or args.replay:
         config['mode'] = 'demo'
     if config['mode'] not in ('demo', 'live'):
         raise ValueError('mode')
-    config['poll_seconds'] = max(60, min(300, int(config['poll_seconds'])))
+    config['poll_seconds'] = max(300, min(600, int(config['poll_seconds'])))
     config['daily_budget'] = max(0, int(config['daily_budget']))
     return config
 
@@ -70,8 +80,10 @@ def main():
     parser.add_argument('--mode', choices=['live', 'demo'])
     parser.add_argument('--team-name')
     parser.add_argument('--team-country')
+    parser.add_argument('--watch-teams', help='comma-separated: Barcelona,Lazio,Como')
     parser.add_argument('--poll-seconds', type=int)
     parser.add_argument('--daily-budget', type=int)
+    parser.add_argument('--key-revision', type=int, default=0)
     parser.add_argument('--demo', action='store_true')
     parser.add_argument('--replay', type=Path)
     parser.add_argument('--once', action='store_true')
@@ -85,7 +97,7 @@ def main():
     store = Store(':memory:' if config['mode'] == 'demo' else state_dir / 'state.db')
     try:
         try:
-            provider = ReplayProvider(args.replay) if args.replay else DemoProvider() if config['mode'] == 'demo' else ApiFootball(config, store)
+            provider = ReplayProvider(args.replay) if args.replay else DemoProvider() if config['mode'] == 'demo' else CompositeProvider(config, store)
         except ProviderError as exc:
             provider = ErrorProvider(str(exc))
         except (OSError, ValueError, TypeError):

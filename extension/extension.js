@@ -8,8 +8,9 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {DockParticipant} from './notchDock.js';
+import {enqueuePendingAlert, takePendingAlert} from './dockModel.js';
 
-const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'poll-seconds', 'daily-budget', 'key-revision']);
+const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', 'poll-seconds', 'daily-budget', 'key-revision']);
 const STATUS = {live: '진행 중', halftime: 'HT', finished: 'FT', scheduled: '경기 전',
     extra_time: '연장', penalties: 'PK', postponed: '연기', cancelled: '취소',
     interrupted: '중단', abandoned: '중단 종료', unknown: '상태 미확인'};
@@ -19,12 +20,13 @@ export default class Archsport extends Extension {
         this._enabled = true;
         this._generation = 0;
         this._signals = [];
-        this._timer = this._restartTimer = 0;
+        this._timer = this._restartTimer = this._pendingAlertTimer = 0;
         this._failures = 0;
         this._expanded = false;
         this._dockStateKey = null;
         this._sleeping = false;
         this._activeAlert = null;
+        this._pendingAlerts = [];
         this._alertDeadline = 0;
         this._payload = {mode: 'live', health: 'loading', visible: false, message: '경기 정보 연결 중'};
         this._settings = this.getSettings();
@@ -57,15 +59,19 @@ export default class Archsport extends Extension {
             staleIndicator.destroy();
         }
         this._indicator = new PanelMenu.Button(0.0, 'Archsport');
-        this._indicator.add_child(new St.Label({text: 'FCB', y_align: Clutter.ActorAlign.CENTER}));
+        this._indicator.add_child(new St.Label({text: '⚽', y_align: Clutter.ActorAlign.CENTER}));
         this._indicator.menu.addAction('노치 펼치기 / 접기', () => this._toggle());
-        this._indicator.menu.addAction('일정 · 최근 경기 · 스탯', openDashboard);
+        this._indicator.menu.addAction('일정 · 최근 경기', openDashboard);
         this._indicator.menu.addAction('Archsport 설정', () => this.openPreferences());
         this._indicator.menu.addAction('데이터 다시 연결', () => this._restartWorker());
         Main.panel.addToStatusArea(this.uuid, this._indicator);
         this._dock = new DockParticipant({id: this.uuid, actor: this._root,
             monitor: () => this._monitor(), order: 0, onYield: () => {
-                this._expanded = false; this._activeAlert = null; this._render();
+                if (this._activeAlert) enqueuePendingAlert(this._pendingAlerts, this._activeAlert);
+                this._expanded = false; this._activeAlert = null;
+                if (this._timer) GLib.source_remove(this._timer);
+                this._timer = 0;
+                this._render(); this._schedulePendingAlert();
             }});
         this._connect(Main.layoutManager, 'monitors-changed', () => this._visibility());
         this._connect(Main.panel, 'notify::height', () => this._visibility());
@@ -76,8 +82,12 @@ export default class Archsport extends Extension {
         this._connect(this._settings, 'changed', (_settings, key) => {
             if (DATA_KEYS.has(key)) this._restartWorker();
             else {
+                if (this._settings.get_boolean('spoiler') || !this._settings.get_boolean('expand-on-event') ||
+                    !this._settings.get_boolean('show-notch'))
+                    this._pendingAlerts = [];
                 this._activeAlert = null;
                 this._render();
+                this._showPendingAlert();
             }
         });
         this._sleepSubscription = Gio.DBus.system.signal_subscribe('org.freedesktop.login1',
@@ -166,16 +176,52 @@ export default class Archsport extends Extension {
         return this._label(match?.[side] ?? '–', 'archsport-caption');
     }
 
-    _render(incoming = null) {
+    _crestIcon(match, side, size) {
+        const path = match?.[`${side}_logo_path`];
+        if (!path || !GLib.file_test(path, GLib.FileTest.IS_REGULAR)) return null;
+        return new St.Icon({gicon: new Gio.FileIcon({file: Gio.File.new_for_path(path)}),
+            icon_size: size, accessible_name: match[side], y_align: Clutter.ActorAlign.CENTER});
+    }
+
+    _schedulePendingAlert() {
+        if (!this._enabled || !this._pendingAlerts.length || this._pendingAlertTimer) return;
+        this._pendingAlertTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+            this._pendingAlertTimer = 0;
+            this._showPendingAlert();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    _showPendingAlert() {
+        if (!this._enabled || !this._pendingAlerts.length || this._activeAlert) return;
+        if (this._settings.get_boolean('spoiler') || !this._settings.get_boolean('expand-on-event') ||
+            !this._settings.get_boolean('show-notch')) {
+            this._pendingAlerts = [];
+            return;
+        }
+        const monitor = this._monitor();
+        if (Main.overview.visible || Main.sessionMode.isLocked ||
+            (this._settings.get_boolean('hide-fullscreen') && monitor?.inFullscreen)) {
+            this._schedulePendingAlert();
+            return;
+        }
+        const alert = takePendingAlert(this._pendingAlerts, () => this._dock.claim(80));
+        if (!alert) {
+            this._schedulePendingAlert();
+            return;
+        }
+        this._activeAlert = alert;
+        this._alertDeadline = GLib.get_monotonic_time() / 1000 + this._settings.get_int('event-seconds') * 1000;
+        this._render();
+    }
+
+    _render() {
         if (!this._enabled) return;
         if (this._timer) { GLib.source_remove(this._timer); this._timer = 0; }
         const now = GLib.get_monotonic_time() / 1000;
         const spoiler = this._settings.get_boolean('spoiler');
         if (spoiler || !this._settings.get_boolean('expand-on-event')) this._activeAlert = null;
-        else if (incoming) {
-            this._activeAlert = incoming;
-            this._alertDeadline = now + this._settings.get_int('event-seconds') * 1000;
-        } else if (now >= this._alertDeadline) this._activeAlert = null;
+        else if (this._activeAlert && now >= this._alertDeadline) this._activeAlert = null;
         const alert = this._activeAlert;
         this._root.remove_all_children();
         const data = this._payload;
@@ -199,7 +245,7 @@ export default class Archsport extends Extension {
             status.add_child(this._label(data.mode === 'demo' ? 'DEMO' : data.health === 'error' ? '오프라인' : match?.status === 'halftime' ? 'HT' : liveMinute, 'archsport-live'));
             row.add_child(status);
             const compact = new St.Button({style_class: 'archsport-compact-button', can_focus: true, x_expand: true,
-                accessible_name: `Barcelona ${score}, ${clock || '경기 정보'}. 펼쳐서 일정과 최근 경기 보기`});
+                accessible_name: `${match?.home ?? '축구'} ${score}, ${match?.away ?? ''} ${clock || '경기 정보'}. 펼쳐서 일정과 최근 경기 보기`});
             compact.set_child(row);
             compact.connect('clicked', () => this._toggle());
             this._root.add_child(compact);
@@ -207,8 +253,8 @@ export default class Archsport extends Extension {
             this._root.add_style_class_name('archsport-open');
             const header = new St.BoxLayout({style_class: 'archsport-header'});
             const identity = new St.BoxLayout({style_class: 'archsport-identity'});
-            identity.add_child(this._label('FCB', 'archsport-brand'));
-            identity.add_child(this._label(data.mode === 'demo' ? '시연' : data.health === 'error' ? '오프라인' : clock || '경기 정보',
+            identity.add_child(this._label('⚽', 'archsport-brand'));
+            identity.add_child(this._label(alert?.title || (data.mode === 'demo' ? '시연' : data.health === 'error' ? '오프라인' : clock || '경기 정보'),
                 alert ? 'archsport-alert' : 'archsport-live'));
             header.add_child(identity);
             const tools = new St.BoxLayout({style_class: 'archsport-tools'});
@@ -217,7 +263,13 @@ export default class Archsport extends Extension {
             header.add_child(tools);
             this._root.add_child(header);
 
-            if (match) {
+            if (alert?.kind === 'kickoff') {
+                const reminder = new St.BoxLayout({style_class: 'archsport-context-row'});
+                reminder.add_child(new St.Icon({icon_name: 'alarm-symbolic', icon_size: 17}));
+                reminder.add_child(this._label(`${alert.club}  ·  ${alert.opponent}`, 'archsport-event'));
+                this._root.add_child(reminder);
+            }
+            if (match && match.status !== 'scheduled') {
                 const scoreboard = new St.BoxLayout({style_class: 'archsport-scoreboard'});
                 const home = new St.BoxLayout({style_class: 'archsport-side'});
                 home.add_child(this._logo(match, 'home', 34));
@@ -256,15 +308,43 @@ export default class Archsport extends Extension {
             }
             if (this._expanded) {
                 const context = data.context ?? {};
-                const upcoming = context.upcoming;
-                const recent = (context.recent ?? []).slice(0, 4);
+                const upcomingMatches = (context.upcoming_matches ?? (context.upcoming ? [context.upcoming] : [])).slice(0, 3);
+                const recent = (context.recent ?? []).slice(0, 6);
                 const stats = context.recent_stats;
-                if (upcoming) {
-                    const nextRow = new St.BoxLayout({style_class: 'archsport-context-row'});
-                    nextRow.add_child(new St.Icon({icon_name: 'x-office-calendar-symbolic', icon_size: 15}));
+                const otherLive = (context.live_matches ?? []).filter(fixture => fixture.id !== match?.id);
+                if (otherLive.length) {
+                    const liveTitle = new St.BoxLayout({style_class: 'archsport-section-title'});
+                    liveTitle.add_child(new St.Icon({icon_name: 'media-record-symbolic', icon_size: 12}));
+                    liveTitle.add_child(this._label('다른 진행 경기', 'archsport-caption'));
+                    this._root.add_child(liveTitle);
+                    for (const fixture of otherLive.slice(0, 2)) {
+                        const row = new St.BoxLayout({style_class: 'archsport-fixture-row'});
+                        row.add_child(this._label(`${fixture.elapsed ?? ''}′`, 'archsport-date'));
+                        for (const side of ['home', 'away']) {
+                            const crest = this._crestIcon(fixture, side, 16);
+                            if (crest) row.add_child(crest);
+                        }
+                        row.add_child(this._label(`${fixture.home}  ${spoiler ? '● : ●' : `${fixture.home_score ?? '–'} : ${fixture.away_score ?? '–'}`}  ${fixture.away}`,
+                            'archsport-context-text'));
+                        this._root.add_child(row);
+                    }
+                }
+                if (upcomingMatches.length) {
+                    const nextTitle = new St.BoxLayout({style_class: 'archsport-section-title'});
+                    nextTitle.add_child(new St.Icon({icon_name: 'x-office-calendar-symbolic', icon_size: 14}));
+                    nextTitle.add_child(this._label('다음 경기', 'archsport-caption'));
+                    this._root.add_child(nextTitle);
+                }
+                for (const upcoming of upcomingMatches) {
+                    const nextRow = new St.BoxLayout({style_class: 'archsport-fixture-row'});
                     nextRow.add_child(this._label(
-                        `${new Date(upcoming.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit'})}  ${upcoming.home} — ${upcoming.away}`,
-                        'archsport-context-text'));
+                        new Date(upcoming.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit'}),
+                        'archsport-date'));
+                    for (const side of ['home', 'away']) {
+                        const crest = this._crestIcon(upcoming, side, 16);
+                        if (crest) nextRow.add_child(crest);
+                    }
+                    nextRow.add_child(this._label(`${upcoming.home} — ${upcoming.away}`, 'archsport-context-text'));
                     this._root.add_child(nextRow);
                 }
                 if (recent.length) {
@@ -279,6 +359,10 @@ export default class Archsport extends Extension {
                     const date = fixture.kickoff_utc ? new Date(fixture.kickoff_utc).toLocaleDateString() : '';
                     const fixtureRow = new St.BoxLayout({style_class: 'archsport-fixture-row'});
                     fixtureRow.add_child(this._label(date, 'archsport-date'));
+                    for (const side of ['home', 'away']) {
+                        const crest = this._crestIcon(fixture, side, 15);
+                        if (crest) fixtureRow.add_child(crest);
+                    }
                     fixtureRow.add_child(this._label(`${fixture.home}  ${result}  ${fixture.away}`, 'archsport-context-text'));
                     this._root.add_child(fixtureRow);
                 }
@@ -291,17 +375,18 @@ export default class Archsport extends Extension {
                     statsRow.add_child(this._label(`유효 ${statValue('Shots on Goal')}`, 'archsport-stat'));
                     statsRow.add_child(this._label(`코너 ${statValue('Corner Kicks')}`, 'archsport-stat'));
                     this._root.add_child(statsRow);
-                } else if (recent.length) {
-                    const statsRow = new St.BoxLayout({style_class: 'archsport-context-row'});
-                    statsRow.add_child(new St.Icon({icon_name: 'dialog-information-symbolic', icon_size: 14}));
-                    statsRow.add_child(this._label('경기 통계 미제공', 'archsport-caption'));
-                    this._root.add_child(statsRow);
                 }
-                if (!upcoming && !recent.length && !match) {
+                if (!upcomingMatches.length && !recent.length && !match) {
                     const empty = new St.BoxLayout({style_class: 'archsport-empty'});
                     empty.add_child(new St.Icon({icon_name: data.health === 'error' ? 'dialog-warning-symbolic' : 'x-office-calendar-symbolic', icon_size: 18}));
                     empty.add_child(this._label(data.health === 'error' ? '연결 후 일정 표시' : '일정 · 최근 기록 없음', 'archsport-context-text'));
                     this._root.add_child(empty);
+                }
+                if (context.schedule_notice) {
+                    const limit = new St.BoxLayout({style_class: 'archsport-context-row'});
+                    limit.add_child(new St.Icon({icon_name: 'dialog-information-symbolic', icon_size: 14}));
+                    limit.add_child(this._label('일정 지연 가능 · 경기별 스탯 없음', 'archsport-caption'));
+                    this._root.add_child(limit);
                 }
             }
         }
@@ -320,9 +405,9 @@ export default class Archsport extends Extension {
             this._contentHeight = 46;
         }
         this._visibility();
-        this._root.accessible_name = `Archsport. ${match?.home ?? 'Barcelona'} ${score} ${match?.away ?? ''}. ${clock}`;
+        this._root.accessible_name = `Archsport. ${match?.home ?? '축구'} ${score} ${match?.away ?? ''}. ${clock}`;
         if (alert) this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(1, Math.round(this._alertDeadline - now)), () => {
-            this._timer = 0; this._activeAlert = null; this._render();
+            this._timer = 0; this._activeAlert = null; this._render(); this._showPendingAlert();
             return GLib.SOURCE_REMOVE;
         });
     }
@@ -337,8 +422,10 @@ export default class Archsport extends Extension {
             const argv = ['python3', '-u', '-m', 'archsport',
                 '--mode', this._settings.get_string('mode'), '--team-name', this._settings.get_string('team-name'),
                 '--team-country', this._settings.get_string('team-country'),
+                '--watch-teams', this._settings.get_strv('watch-teams').join(','),
                 '--poll-seconds', String(this._settings.get_int('poll-seconds')),
-                '--daily-budget', String(this._settings.get_int('daily-budget'))];
+                '--daily-budget', String(this._settings.get_int('daily-budget')),
+                '--key-revision', String(this._settings.get_int('key-revision'))];
             if (this._settings.get_string('mode') === 'demo')
                 argv.push('--replay', GLib.build_filenamev([this.path, 'data', 'replay-barcelona.json']));
             this._process = launcher.spawnv(argv);
@@ -355,8 +442,12 @@ export default class Archsport extends Extension {
                 if (line === null) { this._workerFailed(); return; }
                 this._payload = JSON.parse(line);
                 this._failures = 0;
-                const alert = this._payload.alert && this._dock.claim(80) ? this._payload.alert : null;
-                this._render(alert);
+                const incoming = this._payload.alert;
+                if (incoming && !this._settings.get_boolean('spoiler') &&
+                    this._settings.get_boolean('expand-on-event') && this._settings.get_boolean('show-notch'))
+                    enqueuePendingAlert(this._pendingAlerts, incoming);
+                this._render();
+                this._showPendingAlert();
             } catch (_error) { this._workerFailed(); return; }
             this._readLine(stream, generation);
         });
@@ -374,6 +465,7 @@ export default class Archsport extends Extension {
 
     _restartWorker(delay = 500) {
         this._stopWorker();
+        if (this._activeAlert) enqueuePendingAlert(this._pendingAlerts, this._activeAlert);
         this._activeAlert = null;
         if (this._timer) GLib.source_remove(this._timer);
         this._timer = 0;
@@ -394,6 +486,7 @@ export default class Archsport extends Extension {
         this._enabled = false;
         this._stopWorker();
         if (this._timer) GLib.source_remove(this._timer);
+        if (this._pendingAlertTimer) GLib.source_remove(this._pendingAlertTimer);
         this._timer = 0;
         if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
         this._sleepSubscription = 0;

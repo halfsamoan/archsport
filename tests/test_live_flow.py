@@ -2,6 +2,7 @@ import copy
 import io
 import json
 import os
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -61,12 +62,19 @@ class FlowTests(unittest.TestCase):
         provider.fetch(NOW)
         provider.fetch(NOW + timedelta(seconds=60))
         event_calls = [params for path, params in self.calls if path == '/fixtures/events']
+        team_fixture_calls = [params for path, params in self.calls
+                              if path == '/fixtures' and 'team' in params]
         selected_fixture_calls = [params for path, params in self.calls
                                   if path == '/fixtures' and 'id' in params]
         self.assertEqual(event_calls, [])
+        self.assertTrue(team_fixture_calls)
+        self.assertTrue(all('season' in params for params in team_fixture_calls))
+        self.assertIn('2029', [params['season'][0] for params in team_fixture_calls])
         self.assertEqual(len(selected_fixture_calls), 1)
         self.assertEqual(sum('next' in params for path, params in self.calls), 1)
-        self.assertEqual(sum('last' in params for path, params in self.calls), 1)
+        last_calls = [params for path, params in self.calls if 'last' in params]
+        self.assertEqual(len(last_calls), 2)
+        self.assertIn('2028', [params['season'][0] for params in last_calls])
 
     def test_score_change_fetches_events_once(self):
         provider = self.provider()
@@ -105,6 +113,55 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(sum(p == '/teams' for p, _ in self.calls), 1)
         self.assertEqual(self.store.cache_get('team:barcelona:spain'), 529)
 
+    def test_free_season_restriction_switches_to_live_only_and_caches_the_limit(self):
+        calls = []
+        def opener(request, **kwargs):
+            parsed = urlparse(request.full_url)
+            params = parse_qs(parsed.query)
+            calls.append((parsed.path, params))
+            if params.get('live') == ['all']:
+                other_team = copy.deepcopy(self.item)
+                other_team['fixture']['id'] = 99
+                other_team['teams']['home']['id'] = 1
+                other_team['teams']['home']['name'] = 'Different Club'
+                return Response(json.dumps({'errors': [], 'response': [other_team, self.item]}).encode())
+            return Response(json.dumps({'errors': {'plan': 'Free plans do not have access to this season, try from 2022 to 2024.'},
+                                        'response': []}).encode())
+        provider = ApiFootball({'daily_budget': 100, 'team_id': 529,
+                                'team_name': 'Barcelona', 'team_country': 'Spain'},
+                              self.store, opener=opener)
+        match = provider.fetch(NOW)
+        self.assertEqual(match['status'], 'live')
+        self.assertEqual(match['id'], str(self.item['fixture']['id']))
+        self.assertTrue(provider.context['plan_limited'])
+        provider.fetch(NOW + timedelta(seconds=60))
+        self.assertEqual([params.get('live') for _, params in calls], [None, ['all'], ['all']])
+        self.assertEqual(calls[1][1]['team'], ['529'])
+
+    def test_rewriting_key_file_rechecks_cached_season_restriction(self):
+        calls = []
+        def opener(request, **kwargs):
+            parsed = urlparse(request.full_url)
+            params = parse_qs(parsed.query)
+            calls.append(params)
+            body = ({'errors': [], 'response': []} if params.get('live') == ['all'] else
+                    {'errors': {'plan': 'Free plans do not have access to this season, try from 2022 to 2024.'},
+                     'response': []})
+            return Response(json.dumps(body).encode())
+
+        with tempfile.TemporaryDirectory() as directory:
+            key_file = Path(directory) / 'api-key'
+            key_file.write_text('fake-first-key', encoding='utf-8')
+            config = {'daily_budget': 100, 'team_id': 529, 'team_name': 'Barcelona',
+                      'team_country': 'Spain', 'key_file': str(key_file), 'key_revision': 0}
+            with patch.dict(os.environ, {'ARCHSPORT_API_KEY': ''}):
+                ApiFootball(config, self.store, opener=opener).fetch(NOW)
+                updated_ns = key_file.stat().st_mtime_ns + 1_000_000_000
+                key_file.write_text('fake-second-key', encoding='utf-8')
+                os.utime(key_file, ns=(updated_ns, updated_ns))
+                ApiFootball(config, self.store, opener=opener).fetch(NOW + timedelta(minutes=1))
+            self.assertEqual(sum(not params.get('live') for params in calls), 2)
+
     def test_finished_timestamp_survives_restart(self):
         self.item['fixture']['status']['short'] = 'FT'
         first = self.provider().fetch(NOW)
@@ -133,11 +190,19 @@ class ScheduleTests(unittest.TestCase):
         self.assertEqual(poll_interval(self.match('scheduled', 600), NOW), 120)
         self.assertEqual(poll_interval(self.match('scheduled', 30), NOW), 30)
 
+    def test_idle_poll_wakes_for_two_hour_and_fifteen_minute_reminders(self):
+        fixture = self.match('scheduled', 4 * 3600)
+        self.assertEqual(poll_interval(None, NOW, upcoming_matches=[fixture]), 1800)
+        fixture['kickoff_utc'] = (NOW + timedelta(hours=2)).isoformat()
+        self.assertEqual(poll_interval(None, NOW, upcoming_matches=[fixture]), 1800)
+        fixture['kickoff_utc'] = (NOW + timedelta(minutes=14)).isoformat()
+        self.assertEqual(poll_interval(None, NOW, upcoming_matches=[fixture]), 120)
+
     def test_live_bounds(self):
         for status in ('live', 'halftime', 'extra_time', 'penalties'):
-            self.assertEqual(poll_interval(self.match(status), NOW, 30), 60)
-            self.assertEqual(poll_interval(self.match(status), NOW, 120), 120)
-            self.assertEqual(poll_interval(self.match(status), NOW, 600), 300)
+            self.assertEqual(poll_interval(self.match(status), NOW, 30), 300)
+            self.assertEqual(poll_interval(self.match(status), NOW, 120), 300)
+            self.assertEqual(poll_interval(self.match(status), NOW, 600), 600)
 
     def test_finished_fixture_is_not_visible(self):
         match = self.match('finished')
@@ -179,6 +244,61 @@ class ServiceTests(unittest.TestCase):
         self.current['home_score'] = 2
         self.assertEqual(worker.poll(NOW + timedelta(seconds=60))['alert']['kind'], 'score')
 
+    def test_provider_plan_restriction_uses_supplied_retry_interval(self):
+        worker = self.worker()
+        class Provider:
+            def fetch(self):
+                raise ProviderError('season unavailable', retry_seconds=24 * 60 * 60)
+        worker.provider = Provider()
+        payload = worker.poll(NOW)
+        self.assertEqual(payload['next_poll_seconds'], 24 * 60 * 60)
+
+        class LiveOnlyProvider:
+            live_only = True
+            warning = 'live only'
+            def fetch(self):
+                current = normalize(copy.deepcopy(RAW))
+                current.update(home_score=0, away_score=0, status='live')
+                return current
+        worker.provider = LiveOnlyProvider()
+        payload = worker.poll(NOW)
+        self.assertEqual(payload['next_poll_seconds'], 300)
+
+    def test_live_probe_interval_applies_when_no_fixture_is_returned(self):
+        worker = self.worker()
+        class ProbeProvider:
+            context = {'upcoming_matches': []}
+            live_only = True
+            next_poll_seconds = 300
+            def fetch(self):
+                return []
+        worker.provider = ProbeProvider()
+        self.assertEqual(worker.poll(NOW)['next_poll_seconds'], 300)
+
+    def test_live_provider_cooldown_preserves_fixture_wake_and_schedule_refresh(self):
+        fixture = {'id': 'match:barcelona:sevilla:20300101', 'home': 'Barcelona', 'away': 'Sevilla',
+                   'status': 'scheduled', 'kickoff_utc': (NOW + timedelta(minutes=90)).isoformat(),
+                   'team_keys': ['barcelona', 'sevilla']}
+
+        class CoolingProvider:
+            context = {'upcoming_matches': [fixture], 'recent': []}
+            live_only = True
+            next_poll_seconds = 300
+            retry_after_seconds = 24 * 60 * 60
+            def fetch(self):
+                return []
+
+        worker = self.worker()
+        worker.config['poll_seconds'] = 600
+        worker.provider = CoolingProvider()
+        payload = worker.poll(NOW)
+        self.assertEqual(payload['next_poll_seconds'], 75 * 60)
+        self.assertEqual(payload['alert']['kind'], 'kickoff')
+
+        CoolingProvider.context = {'upcoming_matches': [], 'recent': []}
+        payload = worker.poll(NOW + timedelta(minutes=1))
+        self.assertEqual(payload['next_poll_seconds'], 6 * 60 * 60)
+
     def test_new_process_suppresses_catchup_and_restores_cache_on_error(self):
         self.worker().poll(NOW)
         self.current['home_score'] = 1
@@ -193,3 +313,67 @@ class ServiceTests(unittest.TestCase):
         payload = self.worker().poll(NOW)
         self.assertFalse(payload['visible'])
         self.assertEqual(payload['next_poll_seconds'], 1800)
+
+    def test_all_watched_live_matches_are_ingested_and_alert_selects_changed_team(self):
+        barcelona = copy.deepcopy(self.current)
+        barcelona['id'] = 'barcelona-live'
+        lazio = copy.deepcopy(self.current)
+        lazio.update(id='lazio-live', home='Lazio', away='Como', home_id=487, away_id=895,
+                     team_keys=['lazio', 'como'])
+
+        class MultiProvider:
+            context = {'upcoming_matches': [], 'recent': []}
+            matches = [barcelona, lazio]
+            def fetch(self):
+                return copy.deepcopy(self.matches)
+
+        config = {'mode': 'live', 'team_name': 'Barcelona', 'watch_teams': ['Barcelona', 'Lazio', 'Como'],
+                  'poll_seconds': 60}
+        worker = Worker(config, self.store, MultiProvider())
+        worker.poll(NOW)
+        MultiProvider.matches[1]['home_score'] = 1
+        payload = worker.poll(NOW + timedelta(seconds=60))
+        self.assertEqual(payload['match']['id'], 'lazio-live')
+        self.assertEqual(payload['alert']['kind'], 'score')
+        self.assertEqual(len(self.store.latest_all()), 2)
+
+    def test_kickoff_reminder_is_visible_once_and_not_a_persistent_match(self):
+        fixture = {'id': 'match:barcelona:sevilla:20261018', 'home': 'Barcelona', 'away': 'Sevilla',
+                   'home_score': None, 'away_score': None, 'status': 'scheduled',
+                   'kickoff_utc': (NOW + timedelta(minutes=14)).isoformat(),
+                   'team_keys': ['barcelona', 'sevilla'], 'source_ids': {'football_data': '22'}}
+
+        class ScheduleProvider:
+            context = {'upcoming': fixture, 'upcoming_matches': [fixture], 'recent': []}
+            def load_context(self, now=None):
+                return self.context
+            def fetch(self):
+                return []
+
+        config = {'mode': 'live', 'team_name': 'Barcelona', 'watch_teams': ['Barcelona', 'Lazio', 'Como'],
+                  'poll_seconds': 120}
+        worker = Worker(config, self.store, ScheduleProvider())
+        first = worker.poll(NOW)
+        self.assertTrue(first['visible'])
+        self.assertEqual(first['alert']['kind'], 'kickoff')
+        self.assertEqual(first['alert']['title'], '15분 후 경기')
+        second = worker.poll(NOW + timedelta(minutes=1))
+        self.assertFalse(second['visible'])
+        self.assertIsNone(second['alert'])
+
+    def test_two_hour_kickoff_reminder(self):
+        fixture = {'id': 'match:barcelona:sevilla:20261018', 'home': 'Barcelona', 'away': 'Sevilla',
+                   'status': 'scheduled', 'kickoff_utc': (NOW + timedelta(hours=2)).isoformat(),
+                   'team_keys': ['barcelona', 'sevilla']}
+
+        class ScheduleProvider:
+            context = {'upcoming_matches': [fixture]}
+            def load_context(self, now=None):
+                return self.context
+            def fetch(self):
+                return []
+
+        config = {'mode': 'live', 'team_name': 'Barcelona', 'watch_teams': ['Barcelona', 'Lazio', 'Como'],
+                  'poll_seconds': 120}
+        payload = Worker(config, self.store, ScheduleProvider()).poll(NOW)
+        self.assertEqual(payload['alert']['title'], '2시간 후 경기')

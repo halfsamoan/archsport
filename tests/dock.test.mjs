@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {layoutNotches, canClaim} from '../extension/dockModel.js';
+import {layoutNotches, canClaim, enqueuePendingAlert, takePendingAlert} from '../extension/dockModel.js';
 
 test('sport and memory notches share a centered row', () => {
     const [sport, memory] = layoutNotches([
@@ -20,4 +20,15 @@ test('manual memory review keeps priority over sport event', () => {
     ], {x: 0, y: 0, width: 600, panelHeight: 32});
     assert.equal(sport.fallback, true);
     assert.equal(memory.fallback, false);
+});
+
+test('sport event stays queued while memory review owns the notch', () => {
+    const queue = [];
+    const alert = {kind: 'score', fingerprint: 'fixture:revision:1'};
+    enqueuePendingAlert(queue, alert);
+    enqueuePendingAlert(queue, alert);
+    assert.equal(takePendingAlert(queue, () => canClaim({id: 'matci', priority: 100}, 'archsport', 80)), null);
+    assert.deepEqual(queue, [alert]);
+    assert.deepEqual(takePendingAlert(queue, () => canClaim(null, 'archsport', 80)), alert);
+    assert.deepEqual(queue, []);
 });

@@ -3,6 +3,16 @@ export function canClaim(active, id, priority) {
     return !active || active.id === id || priority >= active.priority;
 }
 
+export function enqueuePendingAlert(queue, alert) {
+    if (alert && !queue.some(item => JSON.stringify(item) === JSON.stringify(alert)))
+        queue.push(alert);
+}
+
+export function takePendingAlert(queue, claim) {
+    if (!queue.length || !claim()) return null;
+    return queue.shift();
+}
+
 export function layoutNotches(entries, monitor, gap = 8, margin = 12) {
     const available = Math.max(1, monitor.width - margin * 2);
     const items = entries.map(entry => ({...entry,

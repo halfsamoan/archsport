@@ -4,7 +4,8 @@
     <key name="mode" type="s"><default>'live'</default><summary>live or demo</summary></key>
     <key name="team-name" type="s"><default>'Barcelona'</default><summary>Provider team name</summary></key>
     <key name="team-country" type="s"><default>'Spain'</default><summary>Provider country</summary></key>
-    <key name="poll-seconds" type="i"><range min="60" max="300"/><default>120</default><summary>In-game refresh interval</summary></key>
+    <key name="watch-teams" type="as"><default>['Barcelona', 'Lazio', 'Como']</default><summary>Watched clubs</summary></key>
+    <key name="poll-seconds" type="i"><range min="300" max="600"/><default>300</default><summary>Minimum in-game refresh interval</summary></key>
     <key name="daily-budget" type="i"><range min="0" max="100000"/><default>90</default><summary>Local API request cap</summary></key>
     <key name="show-notch" type="b"><default>true</default><summary>Show notch</summary></key>
     <key name="expand-on-event" type="b"><default>true</default><summary>Expand on score or status change</summary></key>

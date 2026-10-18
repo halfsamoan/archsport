@@ -76,3 +76,14 @@
 - 설치 스크립트로 버전 7 파일을 사용자 확장 경로에 배치했다. 현재 GNOME 50.1 프로세스는 메타데이터 버전 6을 계속 보고하며, D-Bus `ReloadExtension`은 `UnknownMethod: not implemented`로 반환했다. 따라서 새 GJS UI가 현재 화면에 로드됐다고 확인하지 않았다.
 - Archsport Node geometry 2/2, JS syntax, strict schema dry-run, `git diff --check` 통과. 전체 Python 27개 중 25개 통과; `test_unchanged_polls_do_not_fetch_events`, `test_live_bounds` 두 provider/scheduler 기대 테스트는 실패했으며 UI 변경 경로와 무관하다.
 - 새 UI의 GJS/GNOME 시각 검수는 다음 로그인 세션에서 남아 있다. 현재 세션을 로그아웃하거나 Shell을 재시작하지 않았다.
+
+## 2026-10-18 무료 API 시즌 제한 및 v8
+
+- 사용자 확장 경로에 설치된 Archsport/matci v7은 GNOME Shell 50.1에서 모두 `ACTIVE`로 올라왔다. 두 worker도 실행을 확인했다. 재로그인 전 matci v5 코드가 남아 있던 이전 세션의 예외 로그는 새 세션 이후 재현되지 않았다.
+- 키 파일은 로컬 0600 권한으로 존재한다. 인증은 성공했지만 `team=529&date=2026-10-18&season=2026` 요청에서 무료 플랜이 2026 시즌을 차단했고, API 오류는 2022–2024만 허용한다고 응답했다. 현재 시즌 일정·최근 경기·통계는 이 키로 확인되지 않았다.
+- 같은 키로 `fixtures?live=all`은 HTTP 200 / errors 없음이었다. 검사 시점에 전 세계 라이브 응답 213건 중 Barcelona 경기는 0건이라 실경기 표시 자체는 검수되지 않았다.
+- v8은 팀 일정 요청에 시즌 시작 연도를 전송하고, 시즌 권한 제한을 24시간 캐시한다. 무료 플랜이 현재 시즌을 거부하면 Barcelona만 `live=all`에서 필터링해 live 점수만 추적하며, idle은 30분·경기 중 최소 180초로 요청량을 제한한다. 설정에서 API 키를 다시 저장하면 권한 검사를 즉시 재시도한다. 무료 플랜에서 예정 경기/최근 결과/통계는 제공되지 않는다.
+- v8 소스 검증: Archsport Python 30/30, Node 2/2, matci Python 42/42, Node 15/15, 양쪽 schema strict dry-run 통과. GNOME 50.1 격리 headless 세션은 시작됐으나, 종료 시 격리 Shell이 worker callback을 정리하는 과정에서 GJS critical이 남아 시각/입력 검수는 완료로 기록하지 않는다.
+- 독립 코드 심사에서 일일 요청 한도 복구 시점을 수정했다. API·로컬 한도 소진 시 24시간 뒤가 아니라 다음 UTC 자정 + 5초에 재시도한다. 라이브 대체 요청은 `live=all&team=529`로 범위를 줄이고 응답도 Barcelona ID로 다시 필터링한다. 키 파일 수정 시각도 권한 제한 캐시 키에 포함해, 현재 세션의 v7 GJS 코드가 키 revision 인자를 넘기지 않아도 키를 다시 저장하면 재검사된다.
+- 보강 검증: Archsport Python 33/33, Node 2/2, matci Python 42/42, Node 15/15, 양쪽 schema strict dry-run 통과. 페이지가 2개 이상인 응답은 기존 정책대로 거부한다. 이전 실제 `live=all` 응답은 213건·단일 페이지였고 Barcelona 0건이었다. v8 설치 후 `live=all&team=529` 실요청도 오류 없이 idle 응답을 반환했지만, 경기 표시 자체는 검수되지 않았다. 모의 테스트는 다른 팀 fixture가 섞인 응답에서 Barcelona만 선택하는 동작을 확인한다.
+- 사용자 경로에는 v8 파일을 설치했고, 두 Python worker는 실행 중이다. `health.json`은 v8의 무료 시즌 제한·실시간 전용 상태를 보고한다. 다만 GNOME 50.1은 현재 Shell 세션에서 Archsport GJS 메타데이터 버전 7을 계속 반환하며 `ReloadExtension` D-Bus 메서드는 `UnknownMethod: not implemented`다. 로그아웃 없이 진행했으므로 현재 화면의 JavaScript UI 교체는 확인되지 않았고, 다음 GNOME 세션에서 적용/시각 검수가 필요하다. 현재는 매치가 없어 노치가 숨김 상태다.

@@ -11,14 +11,23 @@ export default class ArchsportPreferences extends ExtensionPreferences {
         window._archsportSettings = settings;
         const page = new Adw.PreferencesPage({title: 'Archsport', icon_name: 'applications-games-symbolic'});
         window.add(page);
-        const team = new Adw.PreferencesGroup({title: '팀', description: '공급사에서 정확한 팀 이름과 국가로 ID를 찾아 캐싱합니다.'});
+        const team = new Adw.PreferencesGroup({title: '관심 팀', description: 'Barcelona, Lazio, Como 중 쉼표로 구분해 선택합니다.'});
         page.add(team);
-        for (const [key, title] of [['team-name', '응원 팀'], ['team-country', '국가']]) {
-            const row = new Adw.EntryRow({title, text: settings.get_string(key), show_apply_button: true});
-            row.connect('apply', () => { if (row.text.trim()) settings.set_string(key, row.text.trim()); });
-            team.add(row);
-        }
-        const data = new Adw.PreferencesGroup({title: '데이터', description: '실제 데이터에는 개인 API-Football 키가 필요합니다. 키는 GitHub에 올리지 않습니다.'});
+        const watchedTeams = new Adw.EntryRow({title: '팀', text: settings.get_strv('watch-teams').join(', '), show_apply_button: true});
+        const teamState = new Adw.ActionRow({title: '지원 팀', subtitle: 'Barcelona · Lazio · Como'});
+        watchedTeams.connect('apply', () => {
+            const allowed = new Map([['barcelona', 'Barcelona'], ['lazio', 'Lazio'], ['como', 'Como']]);
+            const selected = watchedTeams.text.split(',').map(name => name.trim().toLowerCase()).filter(Boolean);
+            if (!selected.length || selected.some(name => !allowed.has(name))) {
+                teamState.subtitle = 'Barcelona, Lazio, Como 중 한 팀 이상 입력하세요.';
+                return;
+            }
+            settings.set_strv('watch-teams', [...new Set(selected.map(name => allowed.get(name)))]);
+            teamState.subtitle = '저장됨 · 세 팀 설정 적용';
+        });
+        team.add(watchedTeams);
+        team.add(teamState);
+        const data = new Adw.PreferencesGroup({title: '데이터', description: '일정: football-data.org · 라이브: API-Football'});
         page.add(data);
         const mode = new Adw.ComboRow({title: '데이터 모드', model: Gtk.StringList.new(['실제 경기', '시연 · 가상 경기']), selected: settings.get_string('mode') === 'demo' ? 1 : 0});
         mode.connect('notify::selected', () => settings.set_string('mode', mode.selected === 1 ? 'demo' : 'live'));
@@ -40,6 +49,9 @@ export default class ArchsportPreferences extends ExtensionPreferences {
         });
         data.add(key);
         data.add(keyState);
+        const schedulePath = GLib.build_filenamev([GLib.get_user_config_dir(), 'archsport', 'football-data-token']);
+        const scheduleKeyState = new Adw.ActionRow({title: '일정 공급사 키', subtitle: GLib.file_test(schedulePath, GLib.FileTest.IS_REGULAR) ? 'football-data.org 키 저장됨' : 'football-data.org 키 파일 없음'});
+        data.add(scheduleKeyState);
         const health = new Adw.ActionRow({title: '서비스 상태', subtitle: '상태 새로고침을 누르세요.'});
         const refresh = new Gtk.Button({label: '상태 새로고침', valign: Gtk.Align.CENTER});
         const readHealth = () => {
@@ -59,7 +71,7 @@ export default class ArchsportPreferences extends ExtensionPreferences {
             settings.bind(keyName, row, 'value', Gio.SettingsBindFlags.DEFAULT);
             group.add(row);
         };
-        spin(data, 'poll-seconds', '경기 중 업데이트 간격 · 초', 60, 300, 30);
+        spin(data, 'poll-seconds', '경기 중 최소 업데이트 간격 · 초', 300, 600, 60);
         spin(data, 'daily-budget', '일일 API 요청 상한 · 무료 기본 90', 0, 100000, 10);
         const notch = new Adw.PreferencesGroup({title: '노치', description: 'ASUS 화면의 GNOME 상단 패널 아래에 표시합니다.'});
         page.add(notch);

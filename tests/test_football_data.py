@@ -1,0 +1,154 @@
+import io
+import json
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+from archsport.engine import Store
+from archsport.football_data import FootballDataSchedule, date_windows
+from archsport.identity import same_fixture
+from archsport.provider import ApiFootballLive
+from archsport.teams import canonical_team, normalize_watch_list
+
+
+NOW = datetime(2026, 10, 18, 15, tzinfo=timezone.utc)
+
+
+class Response(io.BytesIO):
+    status = 200
+    headers = {}
+
+
+def fd_match(identifier, home, away, kickoff, code, status='TIMED', goals=(None, None)):
+    return {'id': identifier, 'utcDate': kickoff, 'status': status,
+            'competition': {'code': code, 'name': {'PD': 'LaLiga', 'SA': 'Serie A', 'CL': 'Champions League'}.get(code, 'Cup')},
+            'homeTeam': {'id': identifier + 10, 'name': home},
+            'awayTeam': {'id': identifier + 20, 'name': away},
+            'score': {'fullTime': {'home': goals[0], 'away': goals[1]}}}
+
+
+class FootballDataTests(unittest.TestCase):
+    def setUp(self):
+        self.store = Store(':memory:')
+        self.tmp = tempfile.TemporaryDirectory()
+        self.key_file = Path(self.tmp.name) / 'football-data-token'
+        self.key_file.write_text('private-test-token', encoding='utf-8')
+
+    def tearDown(self):
+        self.store.close()
+        self.tmp.cleanup()
+
+    def test_windows_are_seven_days_and_cover_schedule_and_recent_results(self):
+        windows = date_windows(NOW.date())
+        self.assertEqual(windows[0][0], NOW.date() - timedelta(days=28))
+        self.assertEqual(windows[-1][1], NOW.date() + timedelta(days=28))
+        self.assertTrue(all((end - start).days < 7 for start, end in windows))
+
+    def test_three_team_schedule_normalizes_and_caches_without_details(self):
+        rows = [
+            fd_match(100, 'FC Barcelona', 'Sevilla FC', '2026-10-20T19:00:00Z', 'PD'),
+            fd_match(101, 'Como 1907', 'SS Lazio', '2026-10-22T18:00:00Z', 'SA'),
+            fd_match(102, 'Como', 'Torino FC', '2026-10-15T18:00:00Z', 'SA', 'FINISHED', (2, 1)),
+            fd_match(103, 'Real Madrid CF', 'Valencia CF', '2026-10-20T18:00:00Z', 'PD'),
+            fd_match(104, 'Barcelona', 'Lazio', '2026-10-20T19:00:00Z', 'CUP'),
+        ]
+        calls = []
+
+        def opener(request, **kwargs):
+            calls.append(request)
+            return Response(json.dumps({'matches': rows}).encode())
+
+        schedule = FootballDataSchedule({'football_data_key_file': str(self.key_file)}, self.store, opener)
+        context = schedule.fetch_context(NOW)
+        self.assertEqual(len(calls), len(date_windows(NOW.date())))
+        self.assertEqual(calls[0].get_header('X-auth-token'), 'private-test-token')
+        params = parse_qs(urlparse(calls[0].full_url).query)
+        self.assertEqual(params['competitions'], ['PD,SA,CL'])
+        self.assertLess((datetime.fromisoformat(params['dateTo'][0]) -
+                         datetime.fromisoformat(params['dateFrom'][0])).days, 7)
+        self.assertEqual({fixture['id'] for fixture in context['upcoming_matches']},
+                         {'match:barcelona:sevilla:20261020', 'match:como:lazio:20261022'})
+        self.assertEqual(context['recent'][0]['home_score'], 2)
+        self.assertIsNone(context['recent_stats'])
+        self.assertFalse(context['stats_available'])
+        self.assertIn('세부 스탯', context['schedule_notice'])
+        schedule.fetch_context(NOW + timedelta(minutes=5))
+        self.assertEqual(len(calls), len(date_windows(NOW.date())))
+
+    def test_team_aliases_and_provider_neutral_fixture_match(self):
+        self.assertEqual(canonical_team('FC Barcelona'), 'barcelona')
+        self.assertEqual(canonical_team('SS Lazio'), 'lazio')
+        self.assertEqual(canonical_team('Como 1907'), 'como')
+        watched = normalize_watch_list(['Barcelona', 'Lazio', 'Como'])
+        self.assertEqual(watched, ['barcelona', 'lazio', 'como'])
+        left = {'home': 'FC Barcelona', 'away': 'Sevilla FC', 'kickoff_utc': '2026-10-20T19:00:00Z'}
+        right = {'home': 'Barcelona', 'away': 'Sevilla', 'kickoff_utc': '2026-10-20T19:15:00Z'}
+        self.assertTrue(same_fixture(left, right))
+
+
+class ApiFootballMultiTeamTests(unittest.TestCase):
+    def setUp(self):
+        self.store = Store(':memory:')
+        self.tmp = tempfile.TemporaryDirectory()
+        self.key_file = Path(self.tmp.name) / 'api-key'
+        self.key_file.write_text('api-test-token', encoding='utf-8')
+
+    def tearDown(self):
+        self.store.close()
+        self.tmp.cleanup()
+
+    def fixture(self, identifier, home, away, kickoff, score=(0, 0)):
+        return {'fixture': {'id': identifier, 'date': kickoff,
+                            'status': {'short': '1H', 'elapsed': 21}},
+                'teams': {'home': {'id': identifier + 1, 'name': home},
+                          'away': {'id': identifier + 2, 'name': away}},
+                'goals': {'home': score[0], 'away': score[1]}, 'score': {},
+                'league': {'name': 'Serie A'}}
+
+    def test_live_feed_tracks_each_watched_team_and_matches_schedule_id(self):
+        fixture = self.fixture(5, 'Barcelona', 'Sevilla', '2026-10-20T19:00:00Z')
+        ignored = self.fixture(6, 'Arsenal', 'Chelsea', '2026-10-20T19:00:00Z')
+        bodies = [{'errors': [], 'response': [fixture, ignored]}]
+        requests = []
+
+        def opener(request, **kwargs):
+            requests.append(request)
+            return Response(json.dumps(bodies.pop(0)).encode())
+
+        provider = ApiFootballLive({'daily_budget': 100, 'key_file': str(self.key_file),
+                                    'watch_teams': ['Barcelona', 'Lazio', 'Como']}, self.store, opener)
+        scheduled = [{'id': 'match:barcelona:sevilla:20261020',
+                      'home': 'FC Barcelona', 'away': 'Sevilla',
+                      'kickoff_utc': '2026-10-20T19:00:00Z',
+                      'source_ids': {'football_data': '88'}}]
+        matches = provider.fetch(NOW, scheduled)
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]['id'], scheduled[0]['id'])
+        self.assertEqual(matches[0]['source_ids'], {'api_football': '5', 'football_data': '88'})
+        self.assertEqual(parse_qs(urlparse(requests[0].full_url).query), {'live': ['all']})
+
+    def test_changed_fixture_fetches_events_using_provider_id(self):
+        original = self.fixture(55, 'SS Lazio', 'Como', '2026-10-21T18:00:00Z')
+        changed = self.fixture(55, 'SS Lazio', 'Como', '2026-10-21T18:00:00Z', (1, 0))
+        bodies = [{'errors': [], 'response': [original]}, {'errors': [], 'response': [changed]},
+                  {'errors': [], 'response': [{'type': 'Goal', 'detail': 'Normal Goal',
+                     'time': {'elapsed': 21}, 'player': {'name': 'Player'},
+                     'team': {'name': 'SS Lazio'}}]}]
+        requests = []
+
+        def opener(request, **kwargs):
+            requests.append(request)
+            return Response(json.dumps(bodies.pop(0)).encode())
+
+        provider = ApiFootballLive({'daily_budget': 100, 'key_file': str(self.key_file),
+                                    'watch_teams': ['Barcelona', 'Lazio', 'Como']}, self.store, opener)
+        provider.fetch(NOW)
+        result = provider.fetch(NOW + timedelta(minutes=3))
+        self.assertEqual(result[0]['events'][0]['player'], 'Player')
+        self.assertEqual(parse_qs(urlparse(requests[-1].full_url).query), {'fixture': ['55']})
+
+
+if __name__ == '__main__':
+    unittest.main()

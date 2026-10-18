@@ -26,6 +26,8 @@ class Store:
                 day TEXT PRIMARY KEY, count INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS cache (
                 key TEXT PRIMARY KEY, payload TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS provider_requests (
+                provider TEXT NOT NULL, requested_at REAL NOT NULL);
         ''')
 
     def reserve_request(self, budget, day=None):
@@ -46,6 +48,29 @@ class Store:
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO cache VALUES (?,?)',
                             (key, json.dumps(value, ensure_ascii=False)))
+
+    def reserve_rate_limit(self, provider, limit, window_seconds, now):
+        """Durably cap a provider's calls across worker restarts."""
+        with self.db:
+            self.db.execute('DELETE FROM provider_requests WHERE provider=? AND requested_at<=?',
+                            (provider, now - window_seconds))
+            row = self.db.execute('SELECT COUNT(*), MIN(requested_at) FROM provider_requests WHERE provider=?',
+                                  (provider,)).fetchone()
+            if row[0] >= limit:
+                return max(1, int(row[1] + window_seconds - now + 1))
+            self.db.execute('INSERT INTO provider_requests VALUES (?,?)', (provider, now))
+        return None
+
+    def latest_all(self, limit=30):
+        rows = self.db.execute('SELECT payload,seen_at FROM snapshots ORDER BY seen_at DESC LIMIT ?',
+                               (max(1, int(limit)),)).fetchall()
+        return [(json.loads(payload), seen_at) for payload, seen_at in rows]
+
+    def insert_receipt(self, match_id, fingerprint):
+        with self.db:
+            inserted = self.db.execute('INSERT OR IGNORE INTO receipts VALUES (?,?)',
+                                       (match_id, fingerprint)).rowcount
+        return bool(inserted)
 
     def latest(self):
         row = self.db.execute('SELECT payload,seen_at FROM snapshots ORDER BY seen_at DESC LIMIT 1').fetchone()

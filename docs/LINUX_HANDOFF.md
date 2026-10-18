@@ -2,12 +2,14 @@
 
 작성: 2026-10-18, Asia/Seoul. **이 파일과 저장소만으로 작업을 이어갈 수 있어야 한다. 다른 Codex 채팅·Windows 실행 서버·로컬 경로를 필요로 하지 않는다.**
 
+> 현재 두 앱의 전체 구현·검증·완료/미완료 상태는 [TWO_APP_IMPLEMENTATION_STATUS.md](TWO_APP_IMPLEMENTATION_STATUS.md)를 기준으로 한다. 아래 인계 절차 중 공급사·버전 안내는 기존 단일 팀 기준의 역사적 설명일 수 있다.
+
 ## 1. 사용자와 제품 결정
 
 - 실제 컴퓨터는 Mac이 아닌 **ASUS Vivobook 15 Pro**. 현재 개발 OS는 Windows, 사용할 OS는 **Ubuntu**. 정확한 모델 SKU·패널 해상도·주사율은 아직 확인 안 됨.
-- 주로 볼 팀은 **FC Barcelona**. 다양한 스포츠 전체 구현보다 축구 단일 팀의 안정적인 실시간 노치를 우선한다.
+- 현재 감시 팀은 **Barcelona, Lazio, Como**다. 지원 리그와 무료 API 범위 안에서 일정·라이브를 연결한다.
 - Apple Sports의 팀 선택 → 경기 점수/상황 → 화면 밖 알림 흐름을 참고한다. 물리 노치·Apple ActivityKit·Apple 계정이 필요하지 않은 소프트웨어 UI다.
-- **실제 축구 구단 로고를 원한다는 명시적인 지시가 있다. 임의 약자 배지로 되돌리지 말 것.** 현재 Barcelona(529)/Inter(505)는 공급사 미디어 원본 PNG로 동봉했고 실제 상대 ID의 PNG도 캐시한다.
+- **실제 축구 구단 로고를 원한다는 명시적인 지시가 있다. 임의 약자 배지로 되돌리지 말 것.** 지원 팀 미디어 ID는 Barcelona(529), Lazio(487), Como(895)이며 상대 로고도 API-Football ID로 캐시한다.
 - 위치는 **GNOME 상단 패널 아래** 유지. 시계와 겹치는 패널 통합은 향후 실험 기능. 기본 패널을 숨기거나 바꾸지 않는다.
 - 첫 MVP는 **Extension → Python subprocess** 유지. systemd user service + IPC는 안정화 후속으로만 계획한다.
 - 사용자는 작업 중 불필요한 확인 질문보다 구현을 원한다. 실제 비밀키·데스크톱 권한 등 없으면 필요한 부분만 요청한다. 키를 채팅·GitHub에 붙이게 하지 않는다.
@@ -26,7 +28,7 @@ git log -3 --oneline
 
 GitHub ZIP 다운로드로 받아도 된다. 현재 채팅이 없는 Linux Codex에 아래 지시를 전달하면 된다:
 
-> 이 저장소의 AGENTS.md와 docs/LINUX_HANDOFF.md를 먼저 읽고, 실제 Ubuntu GNOME에서 P0 검수 표를 진행해줘. 기존 구현과 데이터는 저장소에 있다. 목표는 ASUS Vivobook 15 Pro에서 Barcelona 경기 알림 노치를 매일 쓰는 것이다. 키가 필요한 단계는 설정창에서 로컬 입력하게 하고 비밀키를 저장소에 넣지 마. 통과한 검증만 기록해줘.
+> 이 저장소의 AGENTS.md, docs/TWO_APP_IMPLEMENTATION_STATUS.md, docs/LINUX_HANDOFF.md를 먼저 읽고 실제 Ubuntu GNOME에서 남은 P0 검수를 진행해줘. 현재 목표는 Barcelona·Lazio·Como 일정/라이브 노치다. 키는 로컬 파일로 유지하고 비밀키를 저장소에 넣지 마. 통과한 검증만 기록해줘.
 
 ## 3. 현재 실행 구조
 
@@ -37,10 +39,10 @@ GNOME extension.js
   ├─ logind PrepareForSleep: sleep 시 child 정리, resume 시 재시작
   ├─ EOF/crash: 5→10→20→40→60초 제한 재시작
   └─ python3 -u -m archsport [설정 CLI, 비밀키 제외]
-        ├─ API-Football 공개 v3 API
-        ├─ fixtures: 기본 polling (선택 경기 id)
-        ├─ events: 점수/상태가 바뀌면 1회 (실패한 상세만 다음 tick 재시도)
-        ├─ SQLite: snapshot/receipt/request budget/team ID cache/finished_at
+        ├─ football-data.org: La Liga/Serie A/UCL 일정·최근 결과, 7일 구간·6시간 캐시
+        ├─ API-Football v3: 경기 근처 live=all, 점수/상태 변화 뒤 fixture ID로 events
+        ├─ 내부 경기 ID와 공급사 ID 분리, 세 팀·여러 동시 경기 정규화
+        ├─ SQLite: snapshot/receipt/일일 예산/분당 예산/일정·ID 캐시
         ├─ 팀 로고: 동봉 PNG 또는 media.api-sports.io의 정수 ID PNG
         └─ stdout JSON Lines → GNOME UI
 ```
@@ -87,15 +89,15 @@ gnome-extensions prefs archsport@local
 
 ## 5. API 키와 실데이터 연결
 
-사용자가 API-Football 개인 키를 설정창에 로컬 저장했다고 확인했다. 실제 응답/실경기 수신은 별도로 검증해야 한다. 키를 채팅·저장소·진단 출력에서 확인하지 않는다.
+사용자가 API-Football 개인 키를 설정창에 로컬 저장했고 football-data.org 키를 제공했다. 두 키는 각각 `~/.config/archsport/api-key`, `~/.config/archsport/football-data-token`에 보관한다. 현재 football-data 일정과 API-Football 라이브 endpoint 인증은 실응답으로 확인했지만 GNOME 노치에서 실제 경기 알림이 렌더되는 검수와 세 팀별 실제 경기 검수는 남아 있다. 키를 채팅·저장소·진단 출력에서 확인하지 않는다.
 
 설정창에서:
 
-1. 응원 팀 `Barcelona`, 국가 `Spain`을 유지한다.
-2. API 키 입력 후 적용한다. 0600 파일에 저장되고 키 revision 신호로 worker가 재시작된다.
+1. 감시 팀에서 `Barcelona`, `Lazio`, `Como`를 선택한다.
+2. API-Football 키는 설정창에서 적용한다. football-data.org 일정 키는 설정 파일에 0600 권한으로 둔다.
 3. 모드는 `실제 경기`로 둔다.
-4. 서비스 상태 새로고침과 실제 표시를 확인한다.
-5. 본인 요금제에 맞춰 일일 예산/경기 중 간격을 정한다.
+4. 경기 일정과 라이브 상태를 각각 확인한다. 진행 경기가 없으면 노치는 숨겨지고 2시간/15분 알림 또는 수동 일정 보기만 표시한다.
+5. 무료 API-Football 한도를 위해 라이브 조회 최소 간격은 5분이며 기본 일일 상한은 90회다.
 
 CLI로 분리 진단할 때는 확장을 먼저 꺼서 두 worker가 같은 상태 DB/예산/health 파일을 쓰지 않게 한다:
 
@@ -113,16 +115,20 @@ API 공식 자료:
 - https://www.api-football.com/pricing
 - https://www.api-football.com/news/post/how-to-get-all-teams-and-their-ids
 
-무료 100회/일은 전체 실시간 경기 추적을 보장하지 않는다. 기본 120초 간격과 90회 로컬 요청 상한을 사용하고, 다음 일정(6시간), 최근 5경기(12시간), 최신 완료 경기 스탯(7일), 당일 일정(10분)을 SQLite에 캐시한다. 라이브 추적 가능 시간은 경기 길이·events 변경·초기 데이터 조회에 따라 달라진다.
+무료 100회/일은 상시 전세계 실시간 조회를 보장하지 않는다. Archsport는 일정된 세 팀 경기의 시작 전 5분부터 킥오프 후 30분까지 라이브 탐색을 시작하며, 경기가 발견되면 5분 간격으로 추적한다. 마지막 라이브 응답이 끊긴 뒤 15분 동안만 재확인한다. 로컬 API-Football 상한은 기본 90회/일이다. football-data.org의 3개 대회 일정은 7일 구간 요청 9회, 6시간 캐시로 가져오며 10회/분 제한을 별도로 적용한다.
+
+API-Football 무료 플랜이 다음 시즌/과거 요청을 거절해도 축구 데이터 일정 공급사는 독립적으로 계속 동작한다. 라이브 키나 네트워크가 실패하면 일정/알림을 유지하고 라이브 unavailable 상태를 함께 표시한다. 일정 공급사 무료 범위는 지연될 수 있고 경기 세부 통계·라인업을 주지 않는다. 시즌 제한·라이브 응답은 [전체 구현 문서](TWO_APP_IMPLEMENTATION_STATUS.md)의 검증 및 미완료 표를 참조한다.
 
 ## 6. 주요 파일과 계약
 
 | 파일 | 역할 / 지켜야 할 계약 |
 |---|---|
-| `archsport/provider.py` | 정확한 Barcelona 검색·ID 영속 캐시·경기 선택·변화 시 events; 일정/최근 경기/기본 스탯 저빈도 캐시 |
+| `archsport/football_data.py` | 3팀 일정·최근 결과, 구간 조회·캐시·분당 예산 |
+| `archsport/provider.py` | API-Football live fixture 목록·다중 팀 필터·공급사 ID 기반 events |
+| `archsport/composite.py`, `archsport/identity.py`, `archsport/teams.py` | 공급사 결합·내부 경기 ID·세 팀 별칭과 키 |
 | `archsport/scheduler.py` | 시각 의존 정책을 순수 함수로 테스트; FT는 최초 관측 시점부터 5분 |
 | `archsport/engine.py` | 스코어 감소 정정·중복·revision; 기존 알고리즘 유지 |
-| `archsport/service.py` | 첫 성공/재시작/오류 뒤 첫 복구는 baseline; 저장된 마지막 값은 error로 표시 |
+| `archsport/service.py` | 다중 경기 snapshot·알림 영수증·일정/경기 상태별 polling |
 | `archsport/__main__.py` | CLI·상황별 대기·health 저장; wall/monotonic 차이로 CLI 절전/시계변경 감지 |
 | `archsport/assets.py` | 정수 팀 ID만 미디어 URL로 구성; PNG 크기 제한; 구단 로고 대체 생성 금지 |
 | `extension/extension.js` | UI·설정 변경 적용·수명·프로세스·절전; 네트워크는 Shell 밖 |
@@ -135,7 +141,8 @@ API 공식 자료:
 
 영속 데이터 위치:
 
-- 설정 키: `~/.config/archsport/api-key`
+- 라이브 키: `~/.config/archsport/api-key`
+- 일정 키: `~/.config/archsport/football-data-token`
 - GSettings: `org.gnome.shell.extensions.archsport`
 - DB: `~/.local/state/archsport/state.db`
 - 상태: `~/.local/state/archsport/health.json`
@@ -144,7 +151,7 @@ API 공식 자료:
 
 XDG_CONFIG_HOME / XDG_STATE_HOME / XDG_CACHE_HOME / XDG_DATA_HOME이 있으면 그것을 따른다. 로컬 DB를 이 저장소에 복사할 필요 없다. 처음 API 조회로 ID와 snapshot을 다시 구성한다.
 
-JSON Lines의 `mode`, `health`, `updated_at`, `match`, `alert`, `visible`, `next_poll_seconds`, `context`를 유지한다. null 점수와 0을 구별한다. PK는 별도 필드. 오류 응답은 마지막 정보를 유지하고 live로 위장하지 않는다. `context`는 다음 경기, 최근 결과, 최신 경기 기본 스탯이다.
+JSON Lines의 `mode`, `health`, `updated_at`, `match`, `alert`, `visible`, `next_poll_seconds`, `context`를 유지한다. null 점수와 0을 구별한다. PK는 별도 필드. `context`는 다음 경기·최근 결과·공급사 이용 상태를 담는다. 최근 경기 스코어는 제공하지만 세부 통계와 라인업은 무료 tier에서 이용할 수 없어 아직 표시하지 않는다.
 
 ## 7. 동봉한 데이터로 키 없이 검사
 
@@ -197,14 +204,14 @@ pgrep -af 'python3.*archsport'
 - 최초 스냅샷은 기준값만 저장해 과거 골을 새 알림으로 울리지 않는다. 따라서 기존 득점자 전체 목록을 처음부터 불러오는 동작은 현재 없다.
 - 공급사 events가 늦게 도착했는데 요청이 성공한 경우, 나중에 선수 이름만 바뀌어도 다시 조회하는 정교한 보완은 후속이다. 잘못된 득점자 추정보다 점수만 표시.
 - `finished_at`은 공식 종료 시각이 아닌 처음 FT를 관측한 시간이다. 새 설치에서 오래된 오늘 경기를 FT로 처음 받으면 5분간 보여줄 수 있다.
-- 30분 idle 일정 탐색은 갑자기 추가된 경기의 시작을 즉시 알 수 없다. 이미 알고 있는 일정은 경기 15분 전을 넘기지 않게 대기시간을 줄인다.
+- football-data.org 일정은 무료 플랜에서 지연될 수 있고 컵 일정 누락 가능성이 있다. domestic cup/ESPN 보조 provider는 미구현이다.
 - 표시 모니터 선택은 GNOME monitor index다. 케이블 재연결로 순서가 바뀌면 primary fallback; 커넥터 ID 영속화는 후속.
 - 구단 로고 다운로드 실패 시 이름을 보여준다. 가짜 마크로 대체하지 않는다. 실패한 ID는 해당 worker 재시작까지 재시도하지 않는다.
-- 전체 statistics/lineup, 여러 팀·여러 경기, 독립 중계 앱, GNOME 방해금지/quiet hours는 후속. 이번 1.0에 무리해서 전부 추가하지 말 것.
+- 경기별 상세 통계, lineup, domestic cup fallback, GNOME 방해금지/quiet hours는 미구현이다. 세 팀 일정·라이브 다중 경기는 현재 코드에 있다.
 - systemd user service는 현재 설치하지 않는다. 안정화 단계에서 별도 IPC·권한·단일 인스턴스 정책을 갖춘 뒤 도입.
 
 ## 10. 완료/기록 원칙
 
 Windows와 WSL에서 실행한 결과는 `replica/verification.md`. Linux에서 P0를 검증한 뒤 같은 파일에 실제 결과를 추가한다. 기능표의 partial/no를 근거 없이 yes로 바꾸지 않는다. 실제 경기 데이터가 없는 상태를 ‘라이브 연결 완료’라고 쓰지 않는다.
 
-전체 원본 조사, 기능표, 스키마, 디자인 토큰, 시제품, 소스, 테스트, 가상 데이터, 실제 로고, 참고 이미지는 모두 저장소에 있다. 비밀키와 기기별 실행상태를 제외하면 이 대화에서만 알 수 있는 필수 정보는 이 인계서에 남겼다.
+공급사 제약, 두 앱의 구조, 구현 상태, 테스트 및 현재 세션의 적용 경계는 [전체 구현 문서](TWO_APP_IMPLEMENTATION_STATUS.md)에 모았다. 비밀키 자체는 어느 문서나 Git 기록에도 넣지 않는다.

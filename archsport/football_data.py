@@ -1,0 +1,190 @@
+"""football-data.org free-tier fixture schedule adapter."""
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+
+from .identity import match_id
+from .provider import ProviderError
+from .teams import TEAM_MEDIA_IDS, canonical_team, is_watched, normalize_watch_list
+
+
+COMPETITIONS = ('PD', 'SA', 'CL')
+WINDOW_DAYS = 7
+CACHE_SECONDS = 6 * 60 * 60
+LOOKBACK_DAYS = 28
+LOOKAHEAD_DAYS = 28
+
+
+def date_windows(today, lookback=LOOKBACK_DAYS, lookahead=LOOKAHEAD_DAYS):
+    start = today - timedelta(days=lookback)
+    end = today + timedelta(days=lookahead)
+    result = []
+    cursor = start
+    while cursor <= end:
+        last = min(end, cursor + timedelta(days=WINDOW_DAYS - 1))
+        result.append((cursor, last))
+        cursor = last + timedelta(days=1)
+    return result
+
+
+def normalize_match(item):
+    home = item.get('homeTeam') or {}
+    away = item.get('awayTeam') or {}
+    kickoff = item.get('utcDate')
+    if not home.get('name') or not away.get('name') or not kickoff:
+        raise ValueError('incomplete fixture')
+    status_value = item.get('status')
+    status = {
+        'SCHEDULED': 'scheduled', 'TIMED': 'scheduled', 'IN_PLAY': 'live', 'LIVE': 'live',
+        'PAUSED': 'halftime', 'FINISHED': 'finished', 'SUSPENDED': 'interrupted',
+        'POSTPONED': 'postponed', 'CANCELLED': 'cancelled', 'AWARDED': 'finished',
+    }.get(status_value, 'unknown')
+    full_time = (item.get('score') or {}).get('fullTime') or {}
+    home_score, away_score = full_time.get('home'), full_time.get('away')
+    if status != 'finished':
+        home_score = away_score = None
+    competition = item.get('competition') or {}
+    source_id = str(item.get('id', ''))
+    identifier = match_id(home['name'], away['name'], kickoff)
+    home_key, away_key = canonical_team(home['name']), canonical_team(away['name'])
+    return {
+        'id': identifier, 'home': home['name'], 'away': away['name'],
+        # Only API-Football IDs may be passed to its media host.
+        'home_id': TEAM_MEDIA_IDS.get(home_key), 'away_id': TEAM_MEDIA_IDS.get(away_key),
+        'home_score': home_score, 'away_score': away_score,
+        'home_penalties': None, 'away_penalties': None,
+        'status': status, 'provider_status': status_value or '', 'elapsed': None, 'extra': None,
+        'kickoff_utc': kickoff,
+        'competition': competition.get('name', ''), 'competition_code': competition.get('code', ''),
+        'events': [], 'source': 'football-data.org', 'source_ids': {'football_data': source_id},
+        'team_keys': [home_key, away_key],
+    }
+
+
+class FootballDataSchedule:
+    def __init__(self, config, store, opener=urlopen):
+        self.config, self.store, self.opener = config, store, opener
+        self.key_file = Path(config.get('football_data_key_file',
+            '~/.config/archsport/football-data-token')).expanduser()
+        self.watched = normalize_watch_list(config.get('watch_teams', ['barcelona', 'lazio', 'como']))
+        self.matches = []
+        self.warning = ''
+        self.context = {'upcoming': None, 'upcoming_matches': [], 'recent': [],
+                        'recent_stats': None, 'schedule_source': 'football-data.org',
+                        'schedule_delayed': True, 'stats_available': False}
+
+    def _token(self):
+        try:
+            value = self.key_file.read_text(encoding='utf-8').strip()
+        except OSError:
+            value = ''
+        if not value:
+            raise ProviderError('football-data.org 일정 키가 없습니다. 설정 파일을 확인하세요.')
+        return value
+
+    def _get(self, start, end, now):
+        token = self._token()
+        rate_retry = self.store.reserve_rate_limit('football-data', 10, 60, now.timestamp())
+        if rate_retry:
+            raise ProviderError('football-data.org 분당 요청 한도에 도달했습니다.', retry_seconds=rate_retry)
+        params = {'competitions': ','.join(COMPETITIONS),
+                  'dateFrom': start.isoformat(), 'dateTo': end.isoformat()}
+        request = Request('https://api.football-data.org/v4/matches?' + urlencode(params),
+                          headers={'X-Auth-Token': token, 'Accept': 'application/json',
+                                   'User-Agent': 'Archsport/1.0'})
+        try:
+            with self.opener(request, timeout=15) as response:
+                raw = response.read(2_000_001)
+                if len(raw) > 2_000_000:
+                    raise ProviderError('football-data.org 일정 응답이 허용 크기를 넘었습니다.')
+                payload = json.loads(raw.decode('utf-8'))
+        except HTTPError as exc:
+            if exc.code == 429:
+                raise ProviderError('football-data.org 요청 한도입니다.', retry_seconds=60) from None
+            message = 'football-data.org 인증을 확인하세요.' if exc.code in (401, 403) else \
+                f'football-data.org HTTP {exc.code} 응답입니다.'
+            raise ProviderError(message) from None
+        except (URLError, TimeoutError, OSError):
+            raise ProviderError('football-data.org 일정 서버에 연결할 수 없습니다.') from None
+        except (UnicodeError, ValueError):
+            raise ProviderError('football-data.org 응답 형식이 올바르지 않습니다.') from None
+        matches = payload.get('matches') if isinstance(payload, dict) else None
+        if not isinstance(matches, list):
+            raise ProviderError('football-data.org 경기 목록을 읽을 수 없습니다.')
+        return matches
+
+    def fetch_context(self, now=None):
+        now = now or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        self.warning = ''
+        seen = {}
+        latest_cache_time = 0
+        windows = date_windows(now.astimezone(timezone.utc).date())
+        for start, end in windows:
+            cache_key = f'football-data:{start.isoformat()}:{end.isoformat()}'
+            cached = self.store.cache_get(cache_key)
+            is_fresh = isinstance(cached, dict) and 0 <= now.timestamp() - cached.get('at', 0) < CACHE_SECONDS
+            if is_fresh:
+                rows = cached.get('matches', [])
+                latest_cache_time = max(latest_cache_time, cached.get('at', 0))
+            else:
+                try:
+                    rows = self._get(start, end, now)
+                    self.store.cache_set(cache_key, {'at': now.timestamp(), 'matches': rows})
+                    latest_cache_time = max(latest_cache_time, now.timestamp())
+                except ProviderError as exc:
+                    if isinstance(cached, dict) and isinstance(cached.get('matches'), list):
+                        rows = cached['matches']
+                        self.warning = '일정 연결 오류 · 마지막 저장 일정을 표시합니다.'
+                        latest_cache_time = max(latest_cache_time, cached.get('at', 0))
+                    else:
+                        rows = []
+                        self.warning = str(exc)
+                        break
+            for row in rows:
+                source_id = str(row.get('id', ''))
+                if source_id:
+                    seen[source_id] = row
+
+        normalized = []
+        for row in seen.values():
+            try:
+                item = normalize_match(row)
+            except (TypeError, ValueError, KeyError):
+                continue
+            if item['competition_code'] not in COMPETITIONS:
+                continue
+            if not any(is_watched(side, self.watched) for side in (item['home'], item['away'])):
+                continue
+            normalized.append(item)
+        normalized.sort(key=lambda item: item['kickoff_utc'])
+        self.matches = normalized
+        future = [item for item in normalized if item['status'] == 'scheduled' and
+                  datetime.fromisoformat(item['kickoff_utc'].replace('Z', '+00:00')) > now]
+        future_by_team = {}
+        for team in self.watched:
+            candidate = next((item for item in future if team in item['team_keys']), None)
+            if candidate and candidate['id'] not in {m['id'] for m in future_by_team.values()}:
+                future_by_team[team] = candidate
+        upcoming = sorted(future_by_team.values(), key=lambda item: item['kickoff_utc'])
+        recent = [item for item in normalized if item['status'] == 'finished' and
+                  datetime.fromisoformat(item['kickoff_utc'].replace('Z', '+00:00')) <= now]
+        recent.sort(key=lambda item: item['kickoff_utc'], reverse=True)
+        self.context = {
+            'upcoming': upcoming[0] if upcoming else None,
+            'upcoming_matches': upcoming,
+            'recent': recent[:9],
+            'recent_stats': None,
+            'schedule_source': 'football-data.org',
+            'schedule_updated_at': datetime.fromtimestamp(latest_cache_time, timezone.utc).isoformat()
+                if latest_cache_time else None,
+            'schedule_delayed': True,
+            'stats_available': False,
+            'plan_limited': False,
+            'schedule_notice': '무료 일정은 지연될 수 있으며 경기별 세부 스탯은 제공되지 않습니다.',
+        }
+        return self.context
