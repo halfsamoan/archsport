@@ -10,7 +10,7 @@
 | 역할 | Barcelona·Lazio·Como 축구 일정, 경기 중 점수·이벤트, 노치 알림 | 시스템 RAM·앱 메모리 관찰, 사용자가 고른 앱 창의 정상 닫기 요청 |
 | 구조 | GNOME Shell 확장 + Python worker + football-data.org 일정 + API-Football 라이브 | GNOME Shell 확장 + Python `/proc` worker + UID 범위 SQLite 기록 |
 | 소스 버전 | 11 | 8 |
-| 현재 GNOME 프로세스 | 소스 v11 staged; 설치 경로 v10; GJS v7 ACTIVE; worker 1개 | 소스 v8 staged; 설치 경로/GJS v7 ACTIVE; worker 1개 |
+| 현재 GNOME 상태(2026-10-19 재확인) | v11 staged; 설치 경로 v10; Extension Manager는 GJS v7·Enabled Yes·INACTIVE 보고; worker 0개 | v8 staged; 설치 경로 v7; Extension Manager는 GJS v7·Enabled Yes·INACTIVE 보고; worker 0개 |
 | 자동 검증 | Python 65/65, Node 6/6, ESLint 오류 0, strict schema 통과 | Python 51/51, Node 22/22, ESLint 오류 0, strict schema 통과 |
 | 실기 범위 | football-data 일정 3개·최근 결과 5개, API-Football 라이브 경기 1개 수신 확인; 설치 경로 v10 화면과 실제 알림은 미검증. 현재 활성 GJS는 v7 | 현재 Ubuntu `/proc` smoke 통과; 실제 GUI 창 닫기와 두 노치 배치는 미검증 |
 
@@ -224,7 +224,7 @@ Node 검사 경고는 `.js` 파일이 Node package의 `type=module`로 선언되
 
 ## 설치·현재 세션 상태
 
-2026-10-19 기준 GNOME Shell 50.1 / Wayland다. Archsport v11과 matci v8은 각각 `gnome-shell/extension-updates/<UUID>`에 staging했고, 이전 설치를 state backup에 보관했다. `pending-relogin.json` 두 개가 mode 0600이며 doctor는 양쪽 모두 `pending_relogin=true`를 보고한다. 기존 설치 경로는 Archsport v10, matci v7이고 현 Shell은 둘 다 v7 `ACTIVE`; worker는 각각 1개다. staging은 활성 세션을 변경하지 않았다.
+2026-10-19 기준 GNOME Shell 50.1 / Wayland다. Archsport v11과 matci v8은 각각 `gnome-shell/extension-updates/<UUID>`에 staging했고, 이전 설치를 state backup에 보관했다. `pending-relogin.json` 두 개가 mode 0600이며 doctor는 양쪽 모두 `pending_relogin=true`를 보고한다. 기존 설치 경로는 Archsport v10, matci v7이다. 이번 최종 확인에서 Extension Manager는 두 확장 모두 캐시 GJS v7, `Enabled: Yes`, `State: INACTIVE`를 보고했고 worker도 0개였다. 같은 시점에 `cornro`, `focus-monitor`, Ubuntu Dock도 `INACTIVE`였으며 사용자 확장 전체 비활성화 설정은 꺼져 있었다. 비활성 원인은 현재 증거로 특정하지 못했다. 로그아웃이나 Shell 재시작은 하지 않았다.
 
 사용자가 로그아웃하면 열린 데스크톱 앱이 종료된다고 밝혔으므로 실제 GNOME 세션 재시작은 하지 않았다. 다음 로그인 때 GNOME이 v11/v8을 적용한 뒤 화면·입력 수용 검수가 필요하다. 현재 화면이 새 버전이라고 기록하지 않는다.
 
