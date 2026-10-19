@@ -1,14 +1,14 @@
 .archsport-notch {
     background-color: {{color.surfacePrimary}};
     color: {{color.labelPrimary}};
-    border-radius: 0 0 {{radius.surface}}px {{radius.surface}}px;
-    padding: {{spacing.sm}}px {{spacing.lg}}px {{spacing.sm}}px;
+    border-radius: {{radius.surface}}px;
+    padding: {{spacing.xs}}px {{spacing.md}}px;
     spacing: {{spacing.sm}}px;
     box-shadow: {{shadow.surface}};
 }
-.archsport-notch.archsport-open { padding: {{spacing.lg}}px {{spacing.between}}px {{spacing.lg}}px; spacing: {{spacing.md}}px; }
-.archsport-compact { spacing: {{spacing.sm}}px; min-height: 36px; }
-.archsport-compact-button { height: 36px; padding: 0 12px; border-radius: 18px; background-color: transparent; }
+.archsport-notch.archsport-open { padding: {{spacing.md}}px {{spacing.lg}}px; spacing: {{spacing.sm}}px; }
+.archsport-compact { spacing: {{spacing.xs}}px; min-height: 34px; }
+.archsport-compact-button { height: 34px; padding: 0 6px; border-radius: 17px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: {{color.separatorSubtle}}; }
 .archsport-compact-button:active { background-color: {{color.pressedWash}}; }
 .archsport-compact-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
@@ -23,7 +23,7 @@
 .archsport-header, .archsport-identity, .archsport-tools, .archsport-scoreboard,
 .archsport-side, .archsport-context-row, .archsport-section-title,
 .archsport-fixture-row, .archsport-stats { spacing: {{spacing.sm}}px; }
-.archsport-body { spacing: 8px; }
+.archsport-body { spacing: {{spacing.sm}}px; }
 .archsport-scroll { min-height: 0; border-radius: 12px; }
 .archsport-scroll StScrollBar { -slider-width: 4px; }
 .archsport-header { min-height: 34px; }
@@ -33,7 +33,7 @@
 .archsport-icon-button:hover { background-color: {{color.surfaceHover}}; }
 .archsport-icon-button:active { background-color: {{color.surfacePressed}}; }
 .archsport-icon-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
-.archsport-scoreboard { min-height: 72px; spacing: {{spacing.xl}}px; }
+.archsport-scoreboard { min-height: 64px; spacing: {{spacing.md}}px; }
 .archsport-side { spacing: 8px; }
 .archsport-context-row { min-height: 30px; padding: 2px 0; }
 .archsport-context-row StIcon { color: {{color.labelTertiary}}; }
@@ -50,7 +50,7 @@
 
 .archsport-context-toggle {
     color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; font-weight: 500;
-    padding: {{spacing.sm}}px 0; background-color: transparent;
+    padding: {{spacing.xs}}px 0; background-color: transparent;
 }
 .archsport-context-toggle:hover { color: {{color.labelPrimary}}; }
 .archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }

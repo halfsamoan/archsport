@@ -30,10 +30,10 @@ These values are design starting points for GNOME and must be tuned after native
 | Surface | `surfacePrimary`, `surfaceElevated` plus light appearance variants; Archsport compact near-black | Keeps compact glanceability while respecting GNOME theme. |
 | Labels | `labelPrimary`, `labelSecondary`, `labelTertiary` | Hierarchy by contrast, not an extra badge or border. |
 | Status | `accentPositive`, `accentWarning`, `accentCritical`; neutral normal | Color has a consistent meaning and is not the sole state signal. |
-| Shape | Shared outer/inner radii; inner radius derives from outer radius and inset where practicable | Prevents unrelated pill/card shapes. |
+| Shape | Shared 24 px fully rounded outer radius; inner radius derives from inset where practicable | A continuous notch silhouette on all four corners. |
 | Motion | `micro` 100 ms, `response` 160 ms, `expand` 260 ms, `collapse` 175 ms, `event` 210 ms; distinct curves | Supports purpose and reversibility; actual duration requires native inspection. |
 | Control/icon | Shared visual and hit sizes; GNOME symbolic icons | GNOME assets remain available and accessible, without copying Apple artwork. |
-| Shadow/material | One soft shadow; low contrast border only where needed; opaque fallback | Native compositor appearance and GPU cost outrank imitation of glass. |
+| Shadow/material | No outer shadow; low contrast border only where needed; opaque fallback | The actual GNOME capture showed a rectangular gray shadow outside a rounded corner, so a clean silhouette takes priority. |
 
 ## Boundaries and acceptance
 

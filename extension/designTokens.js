@@ -10,7 +10,7 @@ export const DESIGN = {
     "between": 20
   },
   "radius": {
-    "surface": 28,
+    "surface": 24,
     "control": 12
   },
   "color": {
@@ -55,10 +55,10 @@ export const DESIGN = {
   "control": {
     "icon": 16,
     "size": 34,
-    "compactHeight": 46
+    "compactHeight": 42
   },
   "shadow": {
-    "surface": "0 14px 34px rgba(0, 0, 0, 0.36)"
+    "surface": "none"
   },
   "typography": {
     "hero": 30,
@@ -68,9 +68,9 @@ export const DESIGN = {
     "compactScore": 18
   },
   "geometry": {
-    "archCompact": 220,
-    "archExpanded": 380,
-    "archContext": 440,
-    "matciExpanded": 440
+    "archCompact": 200,
+    "archExpanded": 344,
+    "archContext": 388,
+    "matciExpanded": 368
   }
 };

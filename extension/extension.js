@@ -552,7 +552,7 @@ export default class Archsport extends Extension {
             try {
                 if (monitor === Main.layoutManager.primaryMonitor) panelHeight = Main.panel.height;
             } catch (_error) {}
-            const contentWidth = Math.max(1, width - 40);
+            const contentWidth = Math.max(1, width - 2 * DESIGN.spacing.lg);
             const [, headerNatural] = expandedHeader.get_preferred_height(contentWidth);
             const [, bodyNatural] = expandedBody.get_preferred_height(contentWidth);
             const viewport = calculateExpandedViewport({monitorHeight: monitor?.height ?? 800,

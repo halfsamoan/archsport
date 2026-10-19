@@ -109,11 +109,11 @@ test('expanded fixture list scrolls within the monitor while short content stays
     const short = calculateExpandedViewport({monitorHeight: 900, panelHeight: 32,
         headerHeight: 40, contentHeight: 100});
     assert.equal(short.bodyHeight, 100);
-    assert.equal(short.rootHeight, 182);
+    assert.equal(short.rootHeight, 172);
     assert.equal(short.scrollable, false);
     const long = calculateExpandedViewport({monitorHeight: 450, panelHeight: 32,
         headerHeight: 44, contentHeight: 900});
-    assert.equal(long.bodyHeight, 308);
+    assert.equal(long.bodyHeight, 318);
     assert.equal(long.rootHeight, 394);
     assert.equal(long.scrollable, true);
 });
