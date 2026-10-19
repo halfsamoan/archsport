@@ -1,12 +1,14 @@
 .archsport-notch {
+    font-family: '{{typography.family}}';
     background-color: {{color.surfacePrimary}};
     color: {{color.labelPrimary}};
-    border-radius: {{radius.surface}}px;
+    border-radius: 0 0 {{radius.surface}}px {{radius.surface}}px;
     padding: {{spacing.xs}}px {{spacing.md}}px;
     spacing: {{spacing.sm}}px;
-    box-shadow: {{shadow.surface}};
+    box-shadow: inset 0 -1px 0 {{color.separatorSubtle}};
 }
-.archsport-notch.archsport-open { padding: {{spacing.md}}px {{spacing.lg}}px; spacing: {{spacing.sm}}px; }
+.archsport-notch StLabel, .archsport-notch StButton { font-family: '{{typography.family}}'; }
+.archsport-notch.archsport-open { padding: {{spacing.sm}}px {{spacing.lg}}px {{spacing.md}}px; spacing: {{spacing.sm}}px; }
 .archsport-compact { spacing: {{spacing.xs}}px; min-height: 34px; }
 .archsport-compact-button { height: 34px; padding: 0 6px; border-radius: 17px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: {{color.separatorSubtle}}; }
@@ -25,13 +27,14 @@
 .archsport-fixture-row, .archsport-stats { spacing: {{spacing.sm}}px; }
 .archsport-body { spacing: {{spacing.sm}}px; }
 .archsport-scroll { min-height: 0; border-radius: 12px; }
-.archsport-scroll StScrollBar { -slider-width: 4px; }
-.archsport-header { min-height: 34px; }
+.archsport-scroll StScrollBar { -slider-width: 2px; }
+.archsport-scroll StScrollBar StBin#trough { background-color: transparent; }
+.archsport-header { min-height: 28px; }
 .archsport-identity { spacing: 8px; }
 .archsport-brand { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; font-weight: 700; letter-spacing: 0.02em; }
-.archsport-icon-button { width: {{control.size}}px; height: {{control.size}}px; color: {{color.labelPrimary}}; border-radius: 17px; background-color: {{color.surfaceElevated}}; }
-.archsport-icon-button:hover { background-color: {{color.surfaceHover}}; }
-.archsport-icon-button:active { background-color: {{color.surfacePressed}}; }
+.archsport-icon-button { width: {{control.size}}px; height: {{control.size}}px; color: {{color.labelSecondary}}; border-radius: 8px; background-color: transparent; }
+.archsport-icon-button:hover { background-color: {{color.hoverWash}}; }
+.archsport-icon-button:active { background-color: {{color.pressedWash}}; }
 .archsport-icon-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
 .archsport-scoreboard { min-height: 64px; spacing: {{spacing.md}}px; }
 .archsport-side { spacing: 8px; }
@@ -43,7 +46,7 @@
 .archsport-count { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
 .archsport-empty { min-height: 36px; spacing: {{spacing.sm}}px; color: {{color.labelTertiary}}; }
 .archsport-empty StIcon { color: {{color.focus}}; }
-.archsport-date { min-width: 58px; color: {{color.labelTertiary}}; font-size: {{typography.secondary}}px; }
+.archsport-date { min-width: 58px; color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
 .archsport-fixture-row { min-height: 22px; spacing: 8px; }
 .archsport-stats { min-height: 28px; spacing: {{spacing.md}}px; }
 .archsport-stat { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; }
@@ -54,17 +57,3 @@
 }
 .archsport-context-toggle:hover { color: {{color.labelPrimary}}; }
 .archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
-
-/* Expanded controls follow the GNOME light appearance; compact match activity stays dark. */
-.archsport-notch.archsport-light { background-color: {{color.surfacePrimaryLight}}; color: {{color.labelPrimaryLight}}; }
-.archsport-light .archsport-live, .archsport-light .archsport-caption,
-.archsport-light .archsport-date, .archsport-light .archsport-stat { color: {{color.labelSecondaryLight}}; }
-.archsport-light .archsport-team-name, .archsport-light .archsport-score,
-.archsport-light .archsport-event, .archsport-light .archsport-context-text { color: {{color.labelPrimaryLight}}; }
-.archsport-light .archsport-icon-button { color: {{color.labelPrimaryLight}}; background-color: {{color.surfaceElevatedLight}}; }
-.archsport-light .archsport-icon-button:hover { background-color: {{color.separatorLight}}; }
-.archsport-light .archsport-context-toggle { color: {{color.labelSecondaryLight}}; }
-.archsport-light .archsport-context-toggle:hover { color: {{color.labelPrimaryLight}}; }
-.archsport-light .archsport-alert { color: {{color.accentWarningLight}}; }
-.archsport-light .archsport-icon-button:focus, .archsport-light .archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px {{color.focusLight}}; }
-.archsport-light .archsport-event-title { color: {{color.labelPrimaryLight}}; }

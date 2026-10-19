@@ -137,7 +137,7 @@ export default class Archsport extends Extension {
         this._shellEnding = true;
         this._enabled = false;
         this._sleeping = true;
-        this._dock?.shutdown();
+        this._dock?.dock?.shutdown();
         this._stopWorker();
         for (const name of ['_timer', '_pendingAlertTimer']) {
             if (this[name]) GLib.source_remove(this[name]);
@@ -348,14 +348,10 @@ export default class Archsport extends Extension {
         const expanded = this._expanded || Boolean(alert);
         const opening = expanded && !this._renderedExpanded;
         const closing = !expanded && this._renderedExpanded;
-        const lightAppearance = this._interface.get_string('color-scheme') === 'prefer-light' ||
-            (this._interface.get_string('color-scheme') === 'default' &&
-                !this._interface.get_string('gtk-theme').toLowerCase().includes('dark'));
-        if (expanded && lightAppearance) this._root.add_style_class_name('archsport-light');
-        else this._root.remove_style_class_name('archsport-light');
         let expandedHeader = null;
         let expandedBody = null;
         let expandedScroll = null;
+        let fixtureRows = 0;
         if (!expanded) {
             this._root.remove_style_class_name('archsport-open');
             const row = new St.BoxLayout({style_class: 'archsport-compact',
@@ -456,7 +452,7 @@ export default class Archsport extends Extension {
                 if (!liveMatch || this._showContext) {
                     const context = data.context ?? {};
                     const upcomingMatches = (context.upcoming_matches ?? (context.upcoming ? [context.upcoming] : [])).slice(0, 3);
-                    const recent = (context.recent ?? []).slice(0, 6);
+                    const recent = (context.recent ?? []).slice(0, 2);
                     const stats = context.recent_stats;
                     const otherLive = (context.live_matches ?? []).filter(fixture => fixture.id !== match?.id);
                     if (otherLive.length) {
@@ -465,6 +461,7 @@ export default class Archsport extends Extension {
                         liveTitle.add_child(this._label('다른 진행 경기', 'archsport-caption'));
                         expandedBody.add_child(liveTitle);
                         for (const fixture of otherLive.slice(0, 2)) {
+                            fixtureRows++;
                             const row = new St.BoxLayout({style_class: 'archsport-fixture-row'});
                             row.add_child(this._label(`${fixture.elapsed ?? ''}′`, 'archsport-date'));
                             for (const side of ['home', 'away']) {
@@ -483,6 +480,7 @@ export default class Archsport extends Extension {
                         expandedBody.add_child(nextTitle);
                     }
                     for (const upcoming of upcomingMatches) {
+                        fixtureRows++;
                         const nextRow = new St.BoxLayout({style_class: 'archsport-fixture-row'});
                         nextRow.add_child(this._label(
                             new Date(upcoming.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit'}),
@@ -501,8 +499,10 @@ export default class Archsport extends Extension {
                         expandedBody.add_child(recentTitle);
                     }
                     for (const fixture of recent) {
+                        fixtureRows++;
                         const result = spoiler ? '● : ●' : `${fixture.home_score ?? '–'} : ${fixture.away_score ?? '–'}`;
-                        const date = fixture.kickoff_utc ? new Date(fixture.kickoff_utc).toLocaleDateString() : '';
+                        const date = fixture.kickoff_utc ? new Date(fixture.kickoff_utc).toLocaleDateString('ko-KR',
+                            {month: 'numeric', day: 'numeric'}) : '';
                         const fixtureRow = new St.BoxLayout({style_class: 'archsport-fixture-row'});
                         fixtureRow.add_child(this._label(date, 'archsport-date'));
                         for (const side of ['home', 'away']) {
@@ -512,7 +512,7 @@ export default class Archsport extends Extension {
                         fixtureRow.add_child(this._label(`${fixture.home}  ${result}  ${fixture.away}`, 'archsport-context-text'));
                         expandedBody.add_child(fixtureRow);
                     }
-                    if (stats?.available) {
+                    if (stats?.available && liveMatch) {
                         const values = (stats.team_order ?? []).map(id => stats.values[id] ?? {});
                         const statValue = type => values.map(team => team[type] ?? '–').join(' : ');
                         const statsRow = new St.BoxLayout({style_class: 'archsport-stats'});
@@ -528,7 +528,7 @@ export default class Archsport extends Extension {
                         empty.add_child(this._label(data.health === 'error' ? '연결 후 일정 표시' : '일정 · 최근 기록 없음', 'archsport-context-text'));
                         expandedBody.add_child(empty);
                     }
-                    if (context.schedule_notice) {
+                    if (context.schedule_notice && data.health === 'error') {
                         const limit = new St.BoxLayout({style_class: 'archsport-context-row'});
                         limit.add_child(new St.Icon({icon_name: 'dialog-information-symbolic', icon_size: 14}));
                         limit.add_child(this._label('일정 지연 가능 · 경기별 스탯 없음', 'archsport-caption'));
@@ -555,8 +555,12 @@ export default class Archsport extends Extension {
             const contentWidth = Math.max(1, width - 2 * DESIGN.spacing.lg);
             const [, headerNatural] = expandedHeader.get_preferred_height(contentWidth);
             const [, bodyNatural] = expandedBody.get_preferred_height(contentWidth);
+            // St can report a shorter preferred height before fixture labels settle in the idle schedule.
+            const bodyEstimate = bodyNatural + (!match || match.status === 'scheduled' ? fixtureRows * 6 : 0);
             const viewport = calculateExpandedViewport({monitorHeight: monitor?.height ?? 800,
-                panelHeight, headerHeight: headerNatural, contentHeight: bodyNatural});
+                panelHeight, headerHeight: headerNatural, contentHeight: bodyEstimate});
+            expandedScroll.set_policy(St.PolicyType.NEVER,
+                bodyEstimate > viewport.bodyHeight + 1 ? St.PolicyType.AUTOMATIC : St.PolicyType.NEVER);
             expandedScroll.set_height(viewport.bodyHeight);
             this._contentHeight = viewport.rootHeight;
         } else {
@@ -566,8 +570,10 @@ export default class Archsport extends Extension {
         if (this._interface.get_boolean('enable-animations')) {
             if (opening) {
                 for (const actor of [expandedHeader, expandedScroll]) {
+                    if (actor === expandedScroll && match && match.status !== 'scheduled') continue;
                     actor.opacity = 0;
                     actor.ease({opacity: 255, duration: DESIGN.motion.response,
+                        delay: actor === expandedScroll ? DESIGN.motion.secondaryDelay : 0,
                         mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
                 }
             } else if (closing) {

@@ -13,7 +13,7 @@
     "control": 12
   },
   "color": {
-    "surfacePrimary": "#111214",
+    "surfacePrimary": "rgba(9, 10, 12, 0.97)",
     "surfaceElevated": "#23252a",
     "labelPrimary": "#f5f5f7",
     "labelSecondary": "#b5b7be",
@@ -45,21 +45,23 @@
   "motion": {
     "micro": 100,
     "response": 160,
-    "expand": 260,
-    "collapse": 175,
+    "secondaryDelay": 65,
+    "expand": 220,
+    "collapse": 160,
     "event": 210,
     "expandMode": "EASE_OUT_QUART",
     "collapseMode": "EASE_OUT_CUBIC"
   },
   "control": {
-    "icon": 16,
-    "size": 34,
+    "icon": 15,
+    "size": 28,
     "compactHeight": 42
   },
   "shadow": {
     "surface": "none"
   },
   "typography": {
+    "family": "Pretendard",
     "hero": 30,
     "primary": 14,
     "secondary": 12,

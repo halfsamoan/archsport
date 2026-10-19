@@ -1,12 +1,14 @@
 .archsport-notch {
-    background-color: #111214;
+    font-family: 'Pretendard';
+    background-color: rgba(9, 10, 12, 0.97);
     color: #f5f5f7;
-    border-radius: 24px;
+    border-radius: 0 0 24px 24px;
     padding: 4px 12px;
     spacing: 8px;
-    box-shadow: none;
+    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.07);
 }
-.archsport-notch.archsport-open { padding: 12px 16px; spacing: 8px; }
+.archsport-notch StLabel, .archsport-notch StButton { font-family: 'Pretendard'; }
+.archsport-notch.archsport-open { padding: 8px 16px 12px; spacing: 8px; }
 .archsport-compact { spacing: 4px; min-height: 34px; }
 .archsport-compact-button { height: 34px; padding: 0 6px; border-radius: 17px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: rgba(255, 255, 255, 0.07); }
@@ -25,13 +27,14 @@
 .archsport-fixture-row, .archsport-stats { spacing: 8px; }
 .archsport-body { spacing: 8px; }
 .archsport-scroll { min-height: 0; border-radius: 12px; }
-.archsport-scroll StScrollBar { -slider-width: 4px; }
-.archsport-header { min-height: 34px; }
+.archsport-scroll StScrollBar { -slider-width: 2px; }
+.archsport-scroll StScrollBar StBin#trough { background-color: transparent; }
+.archsport-header { min-height: 28px; }
 .archsport-identity { spacing: 8px; }
 .archsport-brand { color: #f5f5f7; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
-.archsport-icon-button { width: 34px; height: 34px; color: #f5f5f7; border-radius: 17px; background-color: #23252a; }
-.archsport-icon-button:hover { background-color: #303238; }
-.archsport-icon-button:active { background-color: #3a3c43; }
+.archsport-icon-button { width: 28px; height: 28px; color: #b5b7be; border-radius: 8px; background-color: transparent; }
+.archsport-icon-button:hover { background-color: rgba(255, 255, 255, 0.07); }
+.archsport-icon-button:active { background-color: rgba(255, 255, 255, 0.12); }
 .archsport-icon-button:focus { box-shadow: inset 0 0 0 2px #8ab4ff; }
 .archsport-scoreboard { min-height: 64px; spacing: 12px; }
 .archsport-side { spacing: 8px; }
@@ -43,7 +46,7 @@
 .archsport-count { color: #a8abb2; font-size: 11px; }
 .archsport-empty { min-height: 36px; spacing: 8px; color: #a8abb2; }
 .archsport-empty StIcon { color: #8ab4ff; }
-.archsport-date { min-width: 58px; color: #a8abb2; font-size: 12px; }
+.archsport-date { min-width: 58px; color: #a8abb2; font-size: 11px; }
 .archsport-fixture-row { min-height: 22px; spacing: 8px; }
 .archsport-stats { min-height: 28px; spacing: 12px; }
 .archsport-stat { color: #b5b7be; font-size: 12px; }
@@ -54,17 +57,3 @@
 }
 .archsport-context-toggle:hover { color: #f5f5f7; }
 .archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px #8ab4ff; }
-
-/* Expanded controls follow the GNOME light appearance; compact match activity stays dark. */
-.archsport-notch.archsport-light { background-color: #f7f7f9; color: #18191c; }
-.archsport-light .archsport-live, .archsport-light .archsport-caption,
-.archsport-light .archsport-date, .archsport-light .archsport-stat { color: #4b4d54; }
-.archsport-light .archsport-team-name, .archsport-light .archsport-score,
-.archsport-light .archsport-event, .archsport-light .archsport-context-text { color: #18191c; }
-.archsport-light .archsport-icon-button { color: #18191c; background-color: #e9e9ed; }
-.archsport-light .archsport-icon-button:hover { background-color: rgba(0, 0, 0, 0.08); }
-.archsport-light .archsport-context-toggle { color: #4b4d54; }
-.archsport-light .archsport-context-toggle:hover { color: #18191c; }
-.archsport-light .archsport-alert { color: #8a4b00; }
-.archsport-light .archsport-icon-button:focus, .archsport-light .archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px #0057b8; }
-.archsport-light .archsport-event-title { color: #18191c; }

@@ -19,7 +19,7 @@ function layoutSourceHash() {
         classifyOutsideSurface, shouldDismissOutside, dispatchOutsideDismiss,
         eventCoordinates, buttonNumber, hideActor, showActor, insideActiveSurface, getDock, DockParticipant]
         .map(fn => typeof fn === 'string' ? fn : fn.toString()).join('|');
-    for (const char of `${contract}|capture-dismiss-v4|motion-v4|${DESIGN.motion.expandMode}|${DESIGN.motion.collapseMode}`) {
+    for (const char of `${contract}|capture-dismiss-v4|motion-v5|${DESIGN.motion.expandMode}|${DESIGN.motion.collapseMode}`) {
         hash ^= char.charCodeAt(0);
         hash = Math.imul(hash, 16777619);
     }
@@ -64,13 +64,12 @@ function hideActor(dock, participant, animate = true) {
             actor.remove_all_transitions();
             actor.visible = false;
             actor.opacity = 255;
-            actor.scale_x = actor.scale_y = 1;
         } catch (_error) { /* Shell owns final actor disposal */ }
         return;
     }
     participant.closing = true;
     try {
-        actor.ease({opacity: 0, scale_x: 0.99, scale_y: 0.975, duration,
+        actor.ease({opacity: 0, duration,
             mode: Clutter.AnimationMode[DESIGN.motion.collapseMode],
             onComplete: () => {
                 if (dock.shuttingDown || participant.disposed || participant.transitionId !== transitionId)
@@ -79,7 +78,7 @@ function hideActor(dock, participant, animate = true) {
                 if (!participant.state.visible || participant.lastFallback) {
                     try { actor.visible = false; } catch (_error) { return; }
                 }
-                try { actor.opacity = 255; actor.scale_x = actor.scale_y = 1; } catch (_error) {}
+                try { actor.opacity = 255; } catch (_error) {}
             }});
     } catch (_error) {
         participant.closing = false;
@@ -87,7 +86,7 @@ function hideActor(dock, participant, animate = true) {
     }
 }
 
-function showActor(dock, participant) {
+function showActor(dock, participant, placement) {
     const actor = participant.actor;
     if (!actor || participant.disposed || dock.shuttingDown) return;
     const wasHidden = !actor.visible;
@@ -96,25 +95,37 @@ function showActor(dock, participant) {
     participant.transitionId++;
     participant.closing = false;
     try {
-        if (reversingClose) actor.remove_all_transitions();
-        actor.visible = true;
         let duration = 0;
         try {
             if (participant.animations.get_boolean('enable-animations')) duration = OPEN_MS;
         } catch (_error) {
             duration = 0;
         }
-        if (duration && (wasHidden || reversingClose)) {
-            if (wasHidden) {
-                actor.opacity = 0;
-                actor.scale_x = 0.99;
-                actor.scale_y = 0.975;
+        if (wasHidden) {
+            const {width, height} = participant.state;
+            const target = `${placement.x}:${placement.y}`;
+            participant.targetPosition = target;
+            actor.remove_all_transitions();
+            if (duration) {
+                const revealWidth = Math.min(width, 104);
+                const revealHeight = Math.min(height, 8);
+                actor.set_position(placement.x + Math.round((width - revealWidth) / 2), placement.y);
+                actor.set_size(revealWidth, revealHeight);
+                actor.opacity = 255;
+                actor.visible = true;
+                actor.ease({x: placement.x, y: placement.y, width, height, duration,
+                    mode: Clutter.AnimationMode[DESIGN.motion.expandMode]});
+            } else {
+                actor.set_position(placement.x, placement.y);
+                actor.set_size(width, height);
+                actor.opacity = 255;
+                actor.visible = true;
             }
-            actor.ease({opacity: 255, scale_x: 1, scale_y: 1, duration,
+        } else if (duration && reversingClose) {
+            actor.ease({opacity: 255, duration: DESIGN.motion.response,
                 mode: Clutter.AnimationMode[DESIGN.motion.expandMode]});
         } else {
             actor.opacity = 255;
-            actor.scale_x = actor.scale_y = 1;
         }
     } catch (_error) {
         // A stale actor is left to Shell teardown; do not retry UI work during shutdown.
@@ -185,7 +196,7 @@ function getDock() {
                     if (placement.fallback) {
                         hideActor(this, participant, false);
                     } else {
-                        showActor(this, participant);
+                        showActor(this, participant, placement);
                         const target = `${placement.x}:${placement.y}`;
                         if (participant.targetPosition !== target) {
                             participant.targetPosition = target;
