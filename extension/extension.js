@@ -8,7 +8,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import {DockParticipant} from './notchDock.js';
 import {DESIGN} from './designTokens.js';
-import {calculateExpandedViewport, scoreDirection} from './uiModel.js';
+import {calculateExpandedViewport, scoreDirection, eventSummary} from './uiModel.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
 const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', 'poll-seconds', 'daily-budget', 'key-revision']);
@@ -381,8 +381,9 @@ export default class Archsport extends Extension {
                 y_align: Clutter.ActorAlign.CENTER, accessible_name: '경기 일정'}));
             const alertTitle = alert?.kind === 'score' ?
                 alert.scoring_side === 'watched' ? 'GOAL' : alert.scoring_side === 'opponent' ? '득점' : alert.title : alert?.title;
-            identity.add_child(this._label(alertTitle || (data.mode === 'demo' ? '시연' : data.health === 'error' ?
-                (data.ui_version_mismatch ? data.message : '오프라인') : clock || '경기 정보'),
+            identity.add_child(this._label(data.mode === 'demo' && alertTitle ? `시연 · ${alertTitle}` :
+                alertTitle || (data.mode === 'demo' ? '시연' : data.health === 'error' ?
+                    (data.ui_version_mismatch ? data.message : '오프라인') : clock || '경기 정보'),
                 alert ? 'archsport-event-title' : data.health === 'error' ? 'archsport-alert' : 'archsport-live'));
             header.add_child(identity);
             const tools = new St.BoxLayout({style_class: 'archsport-tools'});
@@ -432,7 +433,7 @@ export default class Archsport extends Extension {
             const events = match?.events ?? [];
             const latest = alert?.kind === 'score' ? events.filter(e => e.kind === 'Goal' && e.detail !== 'Missed Penalty').at(-1) : events.at(-1);
             if (latest && !spoiler) {
-                const eventLabel = this._label(`${latest.elapsed ?? ''}′ · ${latest.player} · ${latest.detail}`, 'archsport-event');
+                const eventLabel = this._label(eventSummary(latest), 'archsport-event');
                 if (incoming) {
                     eventLabel.opacity = 0;
                     eventLabel.translation_y = 7;

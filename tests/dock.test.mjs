@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
     classifyOutsideSurface, dispatchOutsideDismiss} from '../extension/dockModel.js';
-import {calculateExpandedViewport, scoreDirection} from '../extension/uiModel.js';
+import {calculateExpandedViewport, scoreDirection, eventSummary} from '../extension/uiModel.js';
 
 test('score event celebrates only a verified watched-team increase', () => {
     const previous = {id: 'm1', home: 'Barcelona', away: 'Opponent', home_score: 1, away_score: 1,
@@ -12,6 +12,14 @@ test('score event celebrates only a verified watched-team increase', () => {
     assert.equal(scoreDirection(previous, {...previous, home_score: 2, away_score: 2}, ['Barcelona']), 'unknown');
     assert.equal(scoreDirection(previous, {...previous, id: 'm2', home_score: 2}, ['Barcelona']), 'unknown');
     assert.equal(scoreDirection(previous, {...previous, home_score: null}, ['Barcelona']), 'unknown');
+});
+
+test('event summary stays readable with extra time and missing provider fields', () => {
+    assert.equal(eventSummary({kind: 'Goal', elapsed: 90, extra: 3, player: 'A. Player',
+        detail: 'Normal Goal'}), '90+3′ · A. Player');
+    assert.equal(eventSummary({kind: 'Goal', elapsed: 74, player: '', detail: 'Own Goal'}), '74′ · Own Goal');
+    assert.equal(eventSummary({kind: 'Var', detail: 'Goal cancelled'}), 'Goal cancelled');
+    assert.equal(eventSummary({}), '경기 상황');
 });
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from '../extension/alertQueue.js';
 

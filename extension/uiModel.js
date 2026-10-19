@@ -28,3 +28,13 @@ export function scoreDirection(previous, current, watchedTeams = []) {
     return watched.has(normalize(current[side])) || watched.has(normalize(current.team_keys?.[index])) ?
         'watched' : 'opponent';
 }
+
+export function eventSummary(event) {
+    if (!event) return '';
+    const elapsed = Number.isInteger(event.elapsed) ? `${event.elapsed}${Number.isInteger(event.extra) &&
+        event.extra > 0 ? `+${event.extra}` : ''}′` : '';
+    const player = String(event.player ?? '').trim();
+    const rawDetail = String(event.detail ?? '').trim();
+    const detail = event.kind === 'Goal' && rawDetail === 'Normal Goal' ? '' : rawDetail;
+    return [elapsed, player, detail].filter(Boolean).join(' · ') || '경기 상황';
+}
