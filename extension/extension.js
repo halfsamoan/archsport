@@ -351,8 +351,8 @@ export default class Archsport extends Extension {
         const lightAppearance = this._interface.get_string('color-scheme') === 'prefer-light' ||
             (this._interface.get_string('color-scheme') === 'default' &&
                 !this._interface.get_string('gtk-theme').toLowerCase().includes('dark'));
-        this._root.remove_style_class_name('archsport-light');
         if (expanded && lightAppearance) this._root.add_style_class_name('archsport-light');
+        else this._root.remove_style_class_name('archsport-light');
         let expandedHeader = null;
         let expandedBody = null;
         let expandedScroll = null;

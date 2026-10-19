@@ -7,11 +7,12 @@
 - Source syntax, Python/Node tests, schema dry run, CSS generation check and local byte comparison of shared tokens passed.
 - `Clutter.AnimationMode.EASE_OUT_QUART` and `EASE_OUT_CUBIC` are present in the installed Clutter 18 typelib.
 - GNOME interface currently reports `color-scheme='default'`, `gtk-theme='Yaru-purple'`, and animations enabled. The code selects the light expanded variant in this appearance.
-- Code inspection confirms the existing shared dock outside-click logic and matci `keepReview: true` path are preserved.
+- Code inspection confirms the existing shared dock outside-click logic and matci `keepReview: true` path are preserved. Both dock implementations now use the same motion duration and easing tokens.
+- After the screen unlocked, the screenshot portal captured the **old installed** v11/v8 panel. The cropped baseline is `docs/design/iterations/00-before-panel-gnome50.png`; the full-desktop capture was removed.
 
 ## Native visual gate pending
 
-The desktop reported `org.gnome.ScreenSaver.GetActive = true`. Both `gnome-screenshot` and the screenshot portal returned a black image while locked. The black captures were discarded. No source-candidate surface screenshot or motion observation is claimed.
+The desktop initially reported `org.gnome.ScreenSaver.GetActive = true`. Both `gnome-screenshot` and the screenshot portal returned a black image while locked; those captures were discarded. The screen is now unlocked, but Shell still runs the old installed versions. No source-candidate surface screenshot or motion observation is claimed.
 
 After unlock and the staged update applies at the next GNOME login, capture and inspect at least three iterations of the following actual GNOME states, saving only cropped UI evidence under `docs/design/iterations/`:
 

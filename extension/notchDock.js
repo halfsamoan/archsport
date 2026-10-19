@@ -4,12 +4,13 @@ import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, classifyOutsideSurface,
     shouldDismissOutside, dispatchOutsideDismiss} from './dockModel.js';
+import {DESIGN} from './designTokens.js';
 
 // One registry and one capture-phase listener for the two independently installed extensions.
 const KEY = `_archsportMatciNotchDock_v${DOCK_PROTOCOL}`;
-const OPEN_MS = 230;
-const CLOSE_MS = 165;
-const POSITION_MS = 260;
+const OPEN_MS = DESIGN.motion.expand;
+const CLOSE_MS = DESIGN.motion.collapse;
+const POSITION_MS = DESIGN.motion.expand;
 
 function layoutSourceHash() {
     let hash = 2166136261;
@@ -18,7 +19,7 @@ function layoutSourceHash() {
         classifyOutsideSurface, shouldDismissOutside, dispatchOutsideDismiss,
         eventCoordinates, buttonNumber, hideActor, showActor, insideActiveSurface, getDock, DockParticipant]
         .map(fn => typeof fn === 'string' ? fn : fn.toString()).join('|');
-    for (const char of `${contract}|capture-dismiss-v4|motion-v2`) {
+    for (const char of `${contract}|capture-dismiss-v4|motion-v4|${DESIGN.motion.expandMode}|${DESIGN.motion.collapseMode}`) {
         hash ^= char.charCodeAt(0);
         hash = Math.imul(hash, 16777619);
     }
@@ -70,7 +71,7 @@ function hideActor(dock, participant, animate = true) {
     participant.closing = true;
     try {
         actor.ease({opacity: 0, scale_x: 0.99, scale_y: 0.975, duration,
-            mode: Clutter.AnimationMode.EASE_IN_CUBIC,
+            mode: Clutter.AnimationMode[DESIGN.motion.collapseMode],
             onComplete: () => {
                 if (dock.shuttingDown || participant.disposed || participant.transitionId !== transitionId)
                     return;
@@ -110,7 +111,7 @@ function showActor(dock, participant) {
                 actor.scale_y = 0.975;
             }
             actor.ease({opacity: 255, scale_x: 1, scale_y: 1, duration,
-                mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+                mode: Clutter.AnimationMode[DESIGN.motion.expandMode]});
         } else {
             actor.opacity = 255;
             actor.scale_x = actor.scale_y = 1;
@@ -194,7 +195,7 @@ function getDock() {
                             } catch (_error) { duration = 0; }
                             try {
                                 participant.actor.ease({x: placement.x, y: placement.y, duration,
-                                    mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+                                    mode: Clutter.AnimationMode[DESIGN.motion.expandMode]});
                             } catch (_error) {}
                         }
                     }
