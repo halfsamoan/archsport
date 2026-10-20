@@ -344,6 +344,14 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(payload['match']['home_score'], 1)
         self.assertEqual(payload['health'], 'error')
 
+    def test_finished_live_snapshots_do_not_accumulate_in_memory(self):
+        worker = self.worker()
+        worker.poll(NOW)
+        self.current['id'] = 'next-match'
+        worker.poll(NOW + timedelta(days=3))
+        self.assertEqual(set(worker.latest_matches), {'next-match'})
+        self.assertEqual(set(worker.latest_seen), {'next-match'})
+
     def test_no_match_is_not_visible(self):
         self.current = None
         payload = self.worker().poll(NOW)

@@ -49,6 +49,13 @@ class Store:
             self.db.execute('INSERT OR REPLACE INTO cache VALUES (?,?)',
                             (key, json.dumps(value, ensure_ascii=False)))
 
+    def cache_prune(self, prefix, keep):
+        """Delete cache rows under prefix except the keys still in use."""
+        keep = list(keep)
+        with self.db:
+            self.db.execute('DELETE FROM cache WHERE substr(key, 1, ?)=? AND key NOT IN (%s)'
+                            % ','.join('?' * len(keep)), (len(prefix), prefix, *keep))
+
     def reserve_rate_limit(self, provider, limit, window_seconds, now):
         """Durably cap a provider's calls across worker restarts."""
         with self.db:

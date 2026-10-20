@@ -149,6 +149,9 @@ class FootballDataSchedule:
                 source_id = str(row.get('id', ''))
                 if source_id:
                     seen[source_id] = row
+        # Window keys slide daily; rows outside today's windows are never read again.
+        self.store.cache_prune('football-data:', [f'football-data:{start.isoformat()}:{end.isoformat()}'
+                                                  for start, end in windows])
 
         normalized = []
         for row in seen.values():

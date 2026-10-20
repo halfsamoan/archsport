@@ -73,6 +73,10 @@ class Worker:
                 alert = self.store.ingest(match, now.timestamp(), suppress=self.first,
                                           max_gap_seconds=max_gap)
                 active.append((match, alert))
+            # The error path only reuses a snapshot younger than stale_after; drop older ones.
+            cutoff = now.timestamp() - self._stale_after_seconds()
+            for identifier in [key for key, seen in self.latest_seen.items() if seen < cutoff]:
+                del self.latest_matches[identifier], self.latest_seen[identifier]
             if isinstance(context, dict) and self.logos:
                 for match in context.get('live_matches', []):
                     self.logos.decorate(match)
