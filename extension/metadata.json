@@ -1,8 +1,8 @@
 {
   "uuid": "archsport@local",
   "name": "Archsport — Football Notch",
-  "description": "Football schedules and live scores for Barcelona, Lazio, and Como. GNOME 46/50 hardware validation pending.",
-  "shell-version": ["46", "50"],
+  "description": "Football schedules and live scores for Barcelona, Lazio, and Como.",
+  "shell-version": ["50"],
   "version": 22,
   "settings-schema": "org.gnome.shell.extensions.archsport",
   "session-modes": ["user"]
