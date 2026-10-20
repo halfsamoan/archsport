@@ -271,3 +271,13 @@ test('numpad toggle shortcut is bound on enable and released on disable', () => 
     assert.match(source, /disable\(\) \{\n\s+this\._enabled = false;\n\s+Main\.wm\.removeKeybinding\('archsport-toggle-shortcut'\);/);
     assert.ok(schema.includes(`<key name="archsport-toggle-shortcut" type="as"><default>['KP_Enter']</default>`));
 });
+
+test('closing releases notch focus and only grabs the root while visible', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /import \{isActorWithin\} from '\.\/dockModel\.js';/);
+    assert.match(source, /_returnWindow = global\.display\.get_focus_window\(\)/);
+    assert.match(source, /_releaseFocus\(\) \{[\s\S]*?global\.stage\.set_key_focus\(null\);[\s\S]*?win\.focus\(global\.get_current_time\(\)\)/);
+    assert.match(source, /if \(closing\) this\._releaseFocus\(\);/);
+    assert.match(source, /if \(expanding && this\._dock\.state\.visible\) this\._root\.grab_key_focus\(\)/);
+    assert.match(source, /if \(this\._dock\.state\.visible\) this\._root\.grab_key_focus\(\)/);
+});

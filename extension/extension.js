@@ -9,6 +9,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import {DockParticipant, easeOnCurve} from './notchDock.js';
+import {isActorWithin} from './dockModel.js';
 import {createNotchSurface} from './notchSurface.js';
 import {DESIGN} from './designTokens.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary} from './uiModel.js';
@@ -31,6 +32,7 @@ export default class Archsport extends Extension {
         this._timer = this._restartTimer = this._pendingAlertTimer = this._closingTimer = 0;
         this._failures = 0;
         this._expanded = false;
+        this._returnWindow = null;
         this._showContext = false;
         this._renderedExpanded = false;
         this._sleeping = false;
@@ -48,11 +50,12 @@ export default class Archsport extends Extension {
             accessible_name: 'Archsport 경기 노치', clip_to_allocation: true});
         const openDashboard = () => {
             if (!this._dock.claim(100)) return;
+            this._returnWindow = global.display.get_focus_window();
             this._expanded = true;
             this._activeAlert = null;
             this._alertAnimate = false;
             this._render();
-            this._root.grab_key_focus();
+            if (this._dock.state.visible) this._root.grab_key_focus();
         };
         this._root.connect('key-press-event', (_actor, event) => {
             const key = event.get_key_symbol();
@@ -171,11 +174,22 @@ export default class Archsport extends Extension {
     _toggle() {
         const expanding = !this._expanded && !this._activeAlert;
         if (expanding && !this._dock.claim(100)) return;
+        if (expanding) this._returnWindow = global.display.get_focus_window();
         this._expanded = expanding;
         this._activeAlert = null;
         this._alertAnimate = false;
         this._render();
-        if (expanding) this._root.grab_key_focus();
+        if (expanding && this._dock.state.visible) this._root.grab_key_focus();
+    }
+
+    _releaseFocus() {
+        const focus = global.stage.get_key_focus();
+        if (!isActorWithin(focus, this._root) && focus !== this._indicator) return;
+        global.stage.set_key_focus(null);
+        const win = this._returnWindow;
+        this._returnWindow = null;
+        if (win && !win.minimized && win.get_workspace?.() === global.workspace_manager.get_active_workspace())
+            win.focus(global.get_current_time());
     }
 
     _monitor() {
@@ -386,6 +400,7 @@ export default class Archsport extends Extension {
         }
         const opening = expanded && !this._renderedExpanded;
         const closing = !expanded && this._renderedExpanded;
+        if (closing) this._releaseFocus();
         if (closing && !afterCollapse && this._interface.get_boolean('enable-animations')) {
             // Keep the expanded content for the reverse morph: it fades out quickly as one
             // piece while the slab retracts and clips it.
