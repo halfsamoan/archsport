@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape,
     classifyOutsideSurface, dispatchOutsideDismiss, notchGeometry} from '../extension/dockModel.js';
-import {calculateExpandedViewport, scoreDirection, eventSummary} from '../extension/uiModel.js';
+import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement} from '../extension/uiModel.js';
 
 test('score event celebrates only a verified watched-team increase', () => {
     const previous = {id: 'm1', home: 'Barcelona', away: 'Opponent', home_score: 1, away_score: 1,
@@ -21,6 +21,20 @@ test('event summary stays readable with extra time and missing provider fields',
     assert.equal(eventSummary({kind: 'Goal', elapsed: 74, player: '', detail: 'Own Goal'}), '74′ · Own Goal');
     assert.equal(eventSummary({kind: 'Var', detail: 'Goal cancelled'}), 'Goal cancelled');
     assert.equal(eventSummary({}), '경기 상황');
+});
+
+test('goal announcements include score and scorer except in spoiler mode', () => {
+    const alert = {kind: 'score', title: '스코어 변경', fingerprint: 'goal-1'};
+    const match = {home: 'Barcelona', away: 'Como', home_score: 2, away_score: 1,
+        events: [{kind: 'Goal', elapsed: 61, player: 'A. Player', detail: 'Normal Goal'}]};
+    const full = alertAnnouncement(alert, match);
+    assert.match(full, /Barcelona 2 대 1 Como/);
+    assert.match(full, /61′ · A\. Player/);
+    const hidden = alertAnnouncement(alert, match, true);
+    assert.equal(hidden, '스코어 변경 알림');
+    assert.doesNotMatch(hidden, /Barcelona|Como|2|1|A\. Player/);
+    assert.equal(alertAnnouncement({kind: 'kickoff', title: '15분 후 경기', club: 'Barcelona', opponent: 'Como'}, match, true),
+        '15분 후 경기 알림');
 });
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from '../extension/alertQueue.js';
 
@@ -190,6 +204,13 @@ test('re-enable keeps the worker generation monotonic so same-tick stale reads c
     assert.doesNotMatch(source, /this\._generation = 0;/);
 });
 
+test('worker error payloads do not reset restart backoff', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    const reader = source.slice(source.indexOf('    _readLine('), source.indexOf('    _stopWorker('));
+    assert.match(reader, /if \(nextPayload\.health !== 'error'\) this\._failures = 0;/);
+    assert.equal((reader.match(/this\._failures = 0;/g) ?? []).length, 1);
+});
+
 test('hit-region margins survive St style resets', () => {
     const source = readFileSync(new URL('../extension/notchSurface.js', import.meta.url), 'utf8');
     // St re-applies CSS margins on every style change, so margin_* constructor properties reset to 0.
@@ -263,4 +284,40 @@ test('numpad toggle shortcut is bound on enable and released on disable', () => 
     assert.match(source, /addKeybinding\('archsport-toggle-shortcut'/);
     assert.match(source, /disable\(\) \{\n\s+this\._enabled = false;\n\s+Main\.wm\.removeKeybinding\('archsport-toggle-shortcut'\);/);
     assert.ok(schema.includes(`<key name="archsport-toggle-shortcut" type="as"><default>['KP_Enter']</default>`));
+});
+
+test('closing releases notch focus and only grabs the root while visible', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /import \{isActorWithin\} from '\.\/dockModel\.js';/);
+    assert.match(source, /_returnWindow = global\.display\.get_focus_window\(\)/);
+    assert.match(source, /_releaseFocus\(\) \{[\s\S]*?global\.stage\.set_key_focus\(null\);[\s\S]*?win\.focus\(global\.get_current_time\(\)\)/);
+    assert.match(source, /if \(closing\) this\._releaseFocus\(\);/);
+    assert.match(source, /if \(expanding && this\._dock\.state\.visible\) this\._root\.grab_key_focus\(\)/);
+    assert.match(source, /if \(this\._dock\.state\.visible\) this\._root\.grab_key_focus\(\)/);
+});
+
+test('overview and hidden fullscreen collapse Archsport unless an alert is active', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /_onOverviewShowing\(\) \{\s*if \(this\._expanded && !this\._activeAlert\) \{\s*this\._expanded = false;\s*this\._render\(\);/);
+    assert.match(source, /_onFullscreenChanged\(\) \{\s*if \(this\._settings\.get_boolean\('hide-fullscreen'\) && this\._monitor\(\)\?\.inFullscreen &&\s*this\._expanded && !this\._activeAlert\)/);
+    assert.match(source, /Main\.overview, 'showing', \(\) => this\._onOverviewShowing\(\)/);
+    assert.match(source, /this\._dock\.claim\(this\._expanded \? 100 : 80\)/);
+});
+
+test('keyboard focus stays in the notch after render rebuilds its controls', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /global\.focus_manager\.add_group\(this\._root\)/);
+    assert.match(source, /const focusWasInside = isActorWithin\(global\.stage\.get_key_focus\(\), this\._root\);/);
+    assert.match(source, /if \(expanded && focusWasInside\) firstFocusable\(this\._root\)\?\.grab_key_focus\(\)/);
+    assert.match(source, /const firstFocusable = actor => \{[\s\S]*?child\.can_focus && child\.reactive/);
+});
+
+test('screen-reader notifications deduplicate alert keys and keep only the latest throttled alert', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /_alertKey\(alert\) \{[\s\S]*?alert\?\.fingerprint/);
+    assert.match(source, /this\._announcedAlertKeys\.has\(key\)[\s\S]*?this\._root\.get_accessible\(\)\?\.emit\('notification', text, Atk\.Live\.POLITE\)/);
+    assert.match(source, /this\._queuedAnnouncement = alert/);
+    assert.match(source, /this\._dock\?\.state\.visible/);
+    assert.match(source, /if \(visible && this\._activeAlert\) this\._announceAlert\(this\._activeAlert\)/);
+    assert.match(source, /alertAnnouncement\(alert, this\._payload\.match, this\._settings\.get_boolean\('spoiler'\)\)/);
 });

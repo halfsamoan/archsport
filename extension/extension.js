@@ -1,4 +1,5 @@
 import Clutter from 'gi://Clutter';
+import Atk from 'gi://Atk';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -9,9 +10,10 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import {DockParticipant, easeOnCurve} from './notchDock.js';
+import {isActorWithin} from './dockModel.js';
 import {createNotchSurface} from './notchSurface.js';
 import {DESIGN} from './designTokens.js';
-import {calculateExpandedViewport, scoreDirection, eventSummary} from './uiModel.js';
+import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement} from './uiModel.js';
 import {displayTeam, fixturePresentation} from './fixturePresentation.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
@@ -19,6 +21,14 @@ const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', '
 const STATUS = {live: '진행 중', halftime: 'HT', finished: 'FT', scheduled: '경기 전',
     extra_time: '연장', penalties: '승부차기', postponed: '연기', cancelled: '취소',
     interrupted: '중단', abandoned: '중단 종료', unknown: '상태 미확인'};
+const firstFocusable = actor => {
+    for (const child of actor.get_children()) {
+        if (child.can_focus && child.reactive) return child;
+        const nested = firstFocusable(child);
+        if (nested) return nested;
+    }
+    return null;
+};
 
 export default class Archsport extends Extension {
     enable() {
@@ -29,8 +39,13 @@ export default class Archsport extends Extension {
         this._generation = (this._generation ?? 0) + 1;
         this._signals = [];
         this._timer = this._restartTimer = this._pendingAlertTimer = this._closingTimer = 0;
+        this._announcementTimer = 0;
+        this._announcedAlertKeys ??= new Set();
+        this._lastAnnouncementAt ??= null;
+        this._queuedAnnouncement = null;
         this._failures = 0;
         this._expanded = false;
+        this._returnWindow = null;
         this._showContext = false;
         this._renderedExpanded = false;
         this._sleeping = false;
@@ -46,13 +61,16 @@ export default class Archsport extends Extension {
         this._root = new St.BoxLayout({vertical: true, style_class: 'archsport-notch',
             reactive: false, can_focus: true,
             accessible_name: 'Archsport 경기 노치', clip_to_allocation: true});
+        // St.FocusManager uses this group to include notch controls in keyboard traversal.
+        global.focus_manager.add_group(this._root);
         const openDashboard = () => {
             if (!this._dock.claim(100)) return;
+            this._returnWindow = global.display.get_focus_window();
             this._expanded = true;
             this._activeAlert = null;
             this._alertAnimate = false;
             this._render();
-            this._root.grab_key_focus();
+            if (this._dock.state.visible) this._root.grab_key_focus();
         };
         this._root.connect('key-press-event', (_actor, event) => {
             const key = event.get_key_symbol();
@@ -99,16 +117,21 @@ export default class Archsport extends Extension {
         this._connect(this._root, 'destroy', () => this._beginShellShutdown());
         this._connect(this._indicator, 'destroy', () => this._beginShellShutdown());
         this._connect(Main.panel, 'notify::height', () => this._visibility());
-        this._connect(Main.overview, 'showing', () => this._visibility());
+        this._connect(Main.overview, 'showing', () => this._onOverviewShowing());
         this._connect(Main.overview, 'hidden', () => this._visibility());
         this._connect(Main.sessionMode, 'updated', () => this._visibility());
-        this._connect(global.display, 'in-fullscreen-changed', () => this._visibility());
+        this._connect(global.display, 'in-fullscreen-changed', () => this._onFullscreenChanged());
         this._connect(this._settings, 'changed', (_settings, key) => {
             if (DATA_KEYS.has(key)) this._restartWorker();
             else {
                 if (this._settings.get_boolean('spoiler') || !this._settings.get_boolean('expand-on-event') ||
                     !this._settings.get_boolean('show-notch'))
                     this._pendingAlerts = [];
+                if (this._settings.get_boolean('spoiler')) {
+                    if (this._announcementTimer) GLib.source_remove(this._announcementTimer);
+                    this._announcementTimer = 0;
+                    this._queuedAnnouncement = null;
+                }
                 this._persistPendingAlerts();
                 this._activeAlert = null;
                 this._alertAnimate = false;
@@ -171,11 +194,22 @@ export default class Archsport extends Extension {
     _toggle() {
         const expanding = !this._expanded && !this._activeAlert;
         if (expanding && !this._dock.claim(100)) return;
+        if (expanding) this._returnWindow = global.display.get_focus_window();
         this._expanded = expanding;
         this._activeAlert = null;
         this._alertAnimate = false;
         this._render();
-        if (expanding) this._root.grab_key_focus();
+        if (expanding && this._dock.state.visible) this._root.grab_key_focus();
+    }
+
+    _releaseFocus() {
+        const focus = global.stage.get_key_focus();
+        if (!isActorWithin(focus, this._root) && focus !== this._indicator) return;
+        global.stage.set_key_focus(null);
+        const win = this._returnWindow;
+        this._returnWindow = null;
+        if (win && !win.minimized && win.get_workspace?.() === global.workspace_manager.get_active_workspace())
+            win.focus(global.get_current_time());
     }
 
     _monitor() {
@@ -204,9 +238,31 @@ export default class Archsport extends Extension {
             DESIGN.geometry.archExpanded) : DESIGN.geometry.archCompact,
             Math.max(1, (monitor?.width ?? 800) - 24));
         const height = expanded ? (this._contentHeight ?? (this._activeAlert ? 160 : 180)) : DESIGN.control.compactHeight;
-        const visible = allowed && !Main.overview.visible && !Main.sessionMode.isLocked && !fullscreen;
+        let visible = allowed && !Main.overview.visible && !Main.sessionMode.isLocked && !fullscreen;
+        if (visible && (this._expanded || this._activeAlert) && this._dock.dock.active?.id !== this.uuid)
+            visible = this._dock.claim(this._expanded ? 100 : 80);
         this._indicator.visible = true;
         this._dock.update({width, height, visible, expanded: height > DESIGN.control.compactHeight});
+        if (visible && this._activeAlert) this._announceAlert(this._activeAlert);
+    }
+
+    _onOverviewShowing() {
+        if (this._expanded && !this._activeAlert) {
+            this._expanded = false;
+            this._render();
+        } else {
+            this._visibility();
+        }
+    }
+
+    _onFullscreenChanged() {
+        if (this._settings.get_boolean('hide-fullscreen') && this._monitor()?.inFullscreen &&
+            this._expanded && !this._activeAlert) {
+            this._expanded = false;
+            this._render();
+        } else {
+            this._visibility();
+        }
     }
 
     _label(text, style) {
@@ -330,7 +386,7 @@ export default class Archsport extends Extension {
             return;
         }
         const queued = this._pendingAlerts.length;
-        const alert = takePendingAlert(this._pendingAlerts, () => this._dock.claim(80));
+        const alert = takePendingAlert(this._pendingAlerts, () => this._dock.claim(this._expanded ? 100 : 80));
         // A blocked claim retries every 2 s; rewrite the file only when the queue changed.
         if (this._pendingAlerts.length !== queued) this._persistPendingAlerts();
         if (!alert) {
@@ -340,6 +396,7 @@ export default class Archsport extends Extension {
         if (this._expanded && alert.kind === 'score') {
             this._scoreFeedback = alert;
             this._render();
+            this._announceAlert(alert);
             this._schedulePendingAlert();
             return;
         }
@@ -347,10 +404,54 @@ export default class Archsport extends Extension {
         this._alertAnimate = true;
         this._alertDeadline = GLib.get_monotonic_time() / 1000 + this._settings.get_int('event-seconds') * 1000;
         this._render();
+        this._announceAlert(alert);
+    }
+
+    _alertKey(alert) {
+        return alert?.id ?? alert?.fingerprint ??
+            (alert?.kind === 'kickoff' && alert.match_id && alert.kickoff_utc ?
+                `${alert.match_id}:${alert.kickoff_utc}:${alert.title ?? ''}` : null);
+    }
+
+    _alertVisible(alert, key) {
+        if (!this._dock?.state.visible || Main.overview.visible || Main.sessionMode.isLocked ||
+            (this._settings.get_boolean('hide-fullscreen') && this._monitor()?.inFullscreen)) return false;
+        if (this._alertKey(this._activeAlert) === key) return true;
+        return alert.kind === 'score' && this._expanded &&
+            String(this._payload.match?.id) === String(alert.match_id);
+    }
+
+    _announceAlert(alert) {
+        if (!['score', 'kickoff'].includes(alert?.kind)) return;
+        const key = this._alertKey(alert);
+        if (!key || this._announcedAlertKeys.has(key) || !this._alertVisible(alert, key)) return;
+        const now = GLib.get_monotonic_time() / 1000;
+        const wait = this._lastAnnouncementAt === null ? 0 : 10000 - (now - this._lastAnnouncementAt);
+        if (wait > 0) {
+            this._queuedAnnouncement = alert;
+            if (!this._announcementTimer) {
+                this._announcementTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.ceil(wait), () => {
+                    this._announcementTimer = 0;
+                    const pending = this._queuedAnnouncement;
+                    this._queuedAnnouncement = null;
+                    if (pending) this._announceAlert(pending);
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+            return;
+        }
+        const text = alertAnnouncement(alert, this._payload.match, this._settings.get_boolean('spoiler'));
+        try { this._root.get_accessible()?.emit('notification', text, Atk.Live.POLITE); }
+        catch (_error) { /* ATK notification support varies across Shell and Orca versions. */ }
+        this._announcedAlertKeys.add(key);
+        if (this._announcedAlertKeys.size > 256)
+            this._announcedAlertKeys.delete(this._announcedAlertKeys.values().next().value);
+        this._lastAnnouncementAt = now;
     }
 
     _render(afterCollapse = false) {
         if (!this._enabled || this._shellEnding) return;
+        const focusWasInside = isActorWithin(global.stage.get_key_focus(), this._root);
         if (this._timer) { GLib.source_remove(this._timer); this._timer = 0; }
         const now = GLib.get_monotonic_time() / 1000;
         const spoiler = this._settings.get_boolean('spoiler');
@@ -386,6 +487,7 @@ export default class Archsport extends Extension {
         }
         const opening = expanded && !this._renderedExpanded;
         const closing = !expanded && this._renderedExpanded;
+        if (closing) this._releaseFocus();
         if (closing && !afterCollapse && this._interface.get_boolean('enable-animations')) {
             // Keep the expanded content for the reverse morph: it fades out quickly as one
             // piece while the slab retracts and clips it.
@@ -682,6 +784,7 @@ export default class Archsport extends Extension {
         }
         this._renderedExpanded = expanded;
         this._root.accessible_name = `Archsport. ${match?.home ?? '축구'} ${score} ${match?.away ?? ''}. ${clock}`;
+        if (expanded && focusWasInside) firstFocusable(this._root)?.grab_key_focus();
         if (alert) this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(1, Math.round(this._alertDeadline - now)), () => {
             this._timer = 0; this._activeAlert = null; this._alertAnimate = false; this._render(); this._showPendingAlert();
             return GLib.SOURCE_REMOVE;
@@ -727,7 +830,7 @@ export default class Archsport extends Extension {
                         this._settings.get_strv('watch-teams'));
                 this._payload = nextPayload;
                 if (this._payload.ui_version_mismatch) this._payload.health = 'error';
-                this._failures = 0;
+                if (nextPayload.health !== 'error') this._failures = 0;
                 if (this._pendingAlertRecord) {
                     this._pendingAlerts = restorePendingAlerts(this._pendingAlertRecord, this._payload);
                     this._pendingAlertRecord = null;
@@ -786,7 +889,9 @@ export default class Archsport extends Extension {
         if (this._timer) GLib.source_remove(this._timer);
         if (this._pendingAlertTimer) GLib.source_remove(this._pendingAlertTimer);
         if (this._closingTimer) GLib.source_remove(this._closingTimer);
-        this._timer = this._pendingAlertTimer = this._closingTimer = 0;
+        if (this._announcementTimer) GLib.source_remove(this._announcementTimer);
+        this._timer = this._pendingAlertTimer = this._closingTimer = this._announcementTimer = 0;
+        this._queuedAnnouncement = null;
         if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
         this._sleepSubscription = 0;
         for (const [object, id] of this._signals ?? []) {

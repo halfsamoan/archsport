@@ -38,3 +38,14 @@ export function eventSummary(event) {
     const detail = event.kind === 'Goal' && rawDetail === 'Normal Goal' ? '' : rawDetail;
     return [elapsed, player, detail].filter(Boolean).join(' · ') || '경기 상황';
 }
+
+export function alertAnnouncement(alert, match, spoiler = false) {
+    const title = String(alert?.title ?? (alert?.kind === 'score' ? '스코어 변경' : '킥오프'));
+    if (spoiler) return `${title} 알림`;
+    if (alert?.kind === 'kickoff')
+        return `${title}. ${alert.club ?? '경기'} 대 ${alert.opponent ?? '상대'}.`;
+    const score = match ? `${match.home ?? '홈'} ${match.home_score ?? '미확인'} 대 ` +
+        `${match.away_score ?? '미확인'} ${match.away ?? '원정'}` : '';
+    const goal = match?.events?.filter(event => event.kind === 'Goal' && event.detail !== 'Missed Penalty').at(-1);
+    return [title, score, eventSummary(goal)].filter(Boolean).join('. ');
+}
