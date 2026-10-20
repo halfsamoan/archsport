@@ -69,20 +69,8 @@ class InstallPathTests(unittest.TestCase):
         self.assertEqual(installer.running_version(command='gnome-extensions'), (7, 'ACTIVE'))
 
     @patch.object(installer.subprocess, 'run')
-    def test_enable_extension_reports_command_success(self, run):
-        run.return_value.returncode = 0
-        self.assertTrue(installer.enable_extension(command='gnome-extensions'))
-        run.assert_called_once()
-
-    @patch.object(installer.subprocess, 'run')
-    def test_enable_extension_reports_command_failure(self, run):
-        run.return_value.returncode = 1
-        self.assertFalse(installer.enable_extension(command='gnome-extensions'))
-
-    @patch.object(installer, 'enable_extension', return_value=True)
-    @patch.object(installer.subprocess, 'run')
-    def test_direct_replacement_restores_old_files_and_active_state_on_failure(self, run, enable):
-        run.return_value.returncode = 0
+    @patch.object(installer, 'running_version')
+    def test_direct_replacement_restores_old_files_on_failure_without_toggling(self, running, run):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             target = root / 'installed'
@@ -101,14 +89,13 @@ class InstallPathTests(unittest.TestCase):
 
             with patch.object(Path, 'rename', fail_staging):
                 with self.assertRaises(OSError):
-                    installer._replace_direct(staging, target, parked, True)
+                    installer._replace_direct(staging, target, parked)
             self.assertEqual((target / 'old.txt').read_text(encoding='utf-8'), 'old')
-            enable.assert_called_once()
+            run.assert_not_called()
+            running.assert_not_called()
 
-    @patch.object(installer, 'enable_extension', return_value=True)
     @patch.object(installer.subprocess, 'run')
-    def test_direct_replacement_aborts_if_extension_cannot_be_disabled(self, run, enable):
-        run.return_value.returncode = 1
+    def test_direct_replacement_does_not_toggle_extension(self, run):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             target = root / 'installed'
@@ -116,11 +103,10 @@ class InstallPathTests(unittest.TestCase):
             (target / 'old.txt').write_text('old', encoding='utf-8')
             staging = root / 'staging'
             staging.mkdir()
-            with self.assertRaises(SystemExit):
-                installer._replace_direct(staging, target, root / 'parked', True)
-            self.assertEqual((target / 'old.txt').read_text(encoding='utf-8'), 'old')
-            self.assertFalse((target / 'new.txt').exists())
-            enable.assert_called_once()
+            (staging / 'new.txt').write_text('new', encoding='utf-8')
+            installer._replace_direct(staging, target, root / 'parked')
+            self.assertEqual((target / 'new.txt').read_text(encoding='utf-8'), 'new')
+            run.assert_not_called()
 
 
 if __name__ == '__main__':

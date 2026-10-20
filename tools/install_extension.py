@@ -71,18 +71,6 @@ def running_version(uuid=UUID, *, command=None):
             state.group(1) if state else None)
 
 
-def enable_extension(uuid=UUID, *, command=None):
-    executable = command or shutil.which('gnome-extensions')
-    if not executable:
-        return False
-    try:
-        result = subprocess.run([executable, 'enable', uuid], text=True, capture_output=True,
-                                timeout=5, check=False, env={**os.environ, 'LC_ALL': 'C'})
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0
-
-
 def verify_identity(path):
     metadata = json.loads((path / 'metadata.json').read_text(encoding='utf-8'))
     if metadata.get('uuid') != UUID:
@@ -113,27 +101,17 @@ def prune_backups(backup_root, keep=5):
         shutil.rmtree(obsolete)
 
 
-def _replace_direct(staging, target, parked, was_active):
+def _replace_direct(staging, target, parked):
+    if target.exists():
+        target.rename(parked)
     try:
-        if target.exists():
-            disabled = subprocess.run(['gnome-extensions', 'disable', UUID], check=False, timeout=5)
-            if disabled.returncode != 0:
-                raise SystemExit('활성 확장을 비활성화하지 못했습니다. 기존 설치를 보존했습니다.')
-            target.rename(parked)
-        try:
-            staging.rename(target)
-        except OSError:
-            if parked and parked.exists() and not target.exists():
-                parked.rename(target)
-            raise
-        if parked:
-            shutil.rmtree(parked)
-    finally:
-        if was_active:
-            if enable_extension():
-                print('이전 확장 활성 상태를 복원했습니다.')
-            else:
-                print('확장을 다시 켜지 못했습니다. 필요하면 `gnome-extensions enable archsport@local`을 실행하세요.')
+        staging.rename(target)
+    except OSError:
+        if parked and parked.exists() and not target.exists():
+            parked.rename(target)
+        raise
+    if parked:
+        shutil.rmtree(parked)
 
 
 def _pending_path(app_state_dir):
@@ -187,10 +165,6 @@ def main():
         raise SystemExit('예상하지 않은 확장 경로입니다. 기존 설치를 보존했습니다.')
     if target.exists() and not (args.upgrade or args.direct):
         raise SystemExit('기존 설치를 보존했습니다. 업데이트하려면 --upgrade를 사용하세요.')
-    was_active = False
-    if target.exists():
-        _, previous_state = running_version()
-        was_active = previous_state == 'ACTIVE'
     parent.mkdir(parents=True, exist_ok=True)
     staging = prepare_staging(source, parent, compiler)
     new_metadata = json.loads((staging / 'metadata.json').read_text(encoding='utf-8'))
@@ -222,7 +196,7 @@ def main():
             print('기존 대기 업데이트를 제거했습니다.')
         if target.exists():
             parked = parent / f'.archsport-previous-{datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")}'
-        _replace_direct(staging, target, parked, was_active)
+        _replace_direct(staging, target, parked)
         destination = target
         if args.direct or (args.upgrade and not update_support):
             print('직접 교체했습니다. GNOME이 이전 모듈을 캐시했을 수 있습니다. 로그아웃·로그인하세요.')
