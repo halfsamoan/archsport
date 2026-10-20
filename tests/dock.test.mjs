@@ -190,6 +190,13 @@ test('re-enable keeps the worker generation monotonic so same-tick stale reads c
     assert.doesNotMatch(source, /this\._generation = 0;/);
 });
 
+test('worker error payloads do not reset restart backoff', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    const reader = source.slice(source.indexOf('    _readLine('), source.indexOf('    _stopWorker('));
+    assert.match(reader, /if \(nextPayload\.health !== 'error'\) this\._failures = 0;/);
+    assert.equal((reader.match(/this\._failures = 0;/g) ?? []).length, 1);
+});
+
 test('hit-region margins survive St style resets', () => {
     const source = readFileSync(new URL('../extension/notchSurface.js', import.meta.url), 'utf8');
     // St re-applies CSS margins on every style change, so margin_* constructor properties reset to 0.

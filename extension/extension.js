@@ -727,7 +727,7 @@ export default class Archsport extends Extension {
                         this._settings.get_strv('watch-teams'));
                 this._payload = nextPayload;
                 if (this._payload.ui_version_mismatch) this._payload.health = 'error';
-                this._failures = 0;
+                if (nextPayload.health !== 'error') this._failures = 0;
                 if (this._pendingAlertRecord) {
                     this._pendingAlerts = restorePendingAlerts(this._pendingAlertRecord, this._payload);
                     this._pendingAlertRecord = null;
