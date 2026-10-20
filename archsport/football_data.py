@@ -91,7 +91,10 @@ class FootballDataSchedule:
         if rate_retry:
             raise ProviderError('football-data.org 분당 요청 한도에 도달했습니다.', retry_seconds=rate_retry)
         params = {'competitions': ','.join(COMPETITIONS),
-                  'dateFrom': start.isoformat(), 'dateTo': end.isoformat()}
+                  'dateFrom': start.isoformat(),
+                  # football-data.org treats dateTo as exclusive. Keep our
+                  # locally inclusive seven-day window intact at the API.
+                  'dateTo': (end + timedelta(days=1)).isoformat()}
         request = Request('https://api.football-data.org/v4/matches?' + urlencode(params),
                           headers={'X-Auth-Token': token, 'Accept': 'application/json',
                                    'User-Agent': 'Archsport/1.0'})

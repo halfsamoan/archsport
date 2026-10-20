@@ -66,8 +66,8 @@ class FootballDataTests(unittest.TestCase):
         self.assertEqual(calls[0].get_header('X-auth-token'), 'private-test-token')
         params = parse_qs(urlparse(calls[0].full_url).query)
         self.assertEqual(params['competitions'], ['PD,SA,CL'])
-        self.assertLess((datetime.fromisoformat(params['dateTo'][0]) -
-                         datetime.fromisoformat(params['dateFrom'][0])).days, 7)
+        self.assertEqual((datetime.fromisoformat(params['dateTo'][0]) -
+                          datetime.fromisoformat(params['dateFrom'][0])).days, 7)
         self.assertEqual({fixture['id'] for fixture in context['upcoming_matches']},
                          {'match:barcelona:sevilla:20261020', 'match:como:lazio:20261022'})
         self.assertEqual(context['recent'][0]['home_score'], 2)
@@ -76,6 +76,23 @@ class FootballDataTests(unittest.TestCase):
         self.assertIn('세부 스탯', context['schedule_notice'])
         schedule.fetch_context(NOW + timedelta(minutes=5))
         self.assertEqual(len(calls), len(date_windows(NOW.date())))
+
+    def test_overlapping_window_rows_are_deduplicated_by_provider_id(self):
+        duplicate = fd_match(100, 'FC Barcelona', 'Sevilla FC',
+                             '2026-10-20T19:00:00Z', 'PD')
+        calls = 0
+
+        def opener(request, **kwargs):
+            nonlocal calls
+            calls += 1
+            # The same provider fixture may be returned by adjacent windows.
+            return Response(json.dumps({'matches': [duplicate, duplicate]}).encode())
+
+        schedule = FootballDataSchedule({'football_data_key_file': str(self.key_file)},
+                                        self.store, opener)
+        schedule.fetch_context(NOW)
+        self.assertEqual(len(schedule.matches), 1)
+        self.assertGreater(calls, 1)
 
     def test_sliding_windows_do_not_accumulate_cache_rows(self):
         schedule = FootballDataSchedule({'football_data_key_file': str(self.key_file)}, self.store,
