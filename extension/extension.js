@@ -8,7 +8,7 @@ import Pango from 'gi://Pango';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
-import {DockParticipant} from './notchDock.js';
+import {DockParticipant, easeOnCurve} from './notchDock.js';
 import {createNotchSurface} from './notchSurface.js';
 import {DESIGN} from './designTokens.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary} from './uiModel.js';
@@ -17,7 +17,7 @@ import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePend
 
 const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', 'poll-seconds', 'daily-budget', 'key-revision']);
 const STATUS = {live: '진행 중', halftime: 'HT', finished: 'FT', scheduled: '경기 전',
-    extra_time: '연장', penalties: 'PK', postponed: '연기', cancelled: '취소',
+    extra_time: '연장', penalties: '승부차기', postponed: '연기', cancelled: '취소',
     interrupted: '중단', abandoned: '중단 종료', unknown: '상태 미확인'};
 
 export default class Archsport extends Extension {
@@ -183,14 +183,16 @@ export default class Archsport extends Extension {
         return Main.layoutManager.monitors[index] ?? Main.layoutManager.primaryMonitor;
     }
 
+    _recentlyUpdated() {
+        const updated = Date.parse(this._payload.updated_at ?? '');
+        const staleAfterMs = (this._payload.stale_after_seconds ?? 300) * 1000;
+        return Number.isFinite(updated) && Date.now() - updated >= -30000 && Date.now() - updated <= staleAfterMs;
+    }
+
     _visibility() {
         if (!this._enabled || this._shellEnding || !this._dock) return;
         const match = this._payload.match;
-        const updated = Date.parse(this._payload.updated_at ?? '');
-        const staleAfterMs = (this._payload.stale_after_seconds ?? 300) * 1000;
-        const recentlyUpdated = Number.isFinite(updated) && Date.now() - updated >= -30000 &&
-            Date.now() - updated <= staleAfterMs;
-        const active = this._payload.visible !== false && recentlyUpdated &&
+        const active = this._payload.visible !== false && this._recentlyUpdated() &&
             (this._payload.mode === 'demo' && Boolean(match) ||
                 ['live', 'halftime', 'extra_time', 'penalties', 'interrupted'].includes(match?.status));
         const allowed = this._settings.get_boolean('show-notch') && !this._sleeping &&
@@ -255,6 +257,19 @@ export default class Archsport extends Extension {
                     icon_size: size, accessible_name: match[side], y_align: Clutter.ActorAlign.CENTER});
         }
         return null;
+    }
+
+    // Fixed-width lead so every opponent name starts on one line: the watched team's real
+    // crest, or its short name when no crest is installed.
+    _fixtureLead(fixture, presentation) {
+        const lead = new St.Bin({style_class: 'archsport-fixture-lead'});
+        if (presentation.crestSide) {
+            const mark = this._crestIcon(fixture, presentation.crestSide, 16) ??
+                this._label(presentation.watchedName, 'archsport-watch-name');
+            mark.x_align = Clutter.ActorAlign.START;
+            lead.set_child(mark);
+        }
+        return lead;
     }
 
     _schedulePendingAlert() {
@@ -359,6 +374,9 @@ export default class Archsport extends Extension {
         if (match?.status === 'scheduled' && match.kickoff_utc) {
             clock = new Date(match.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'});
         }
+        // Green marks only a match that is being played right now, on data that is not stale.
+        const liveNow = data.mode !== 'demo' && data.health !== 'error' && this._recentlyUpdated() &&
+            ['live', 'extra_time', 'penalties'].includes(match?.status);
         const expanded = this._expanded || Boolean(alert);
         if (this._closingTimer) {
             if (!expanded) { this._visibility(); return; }
@@ -369,9 +387,9 @@ export default class Archsport extends Extension {
         const opening = expanded && !this._renderedExpanded;
         const closing = !expanded && this._renderedExpanded;
         if (closing && !afterCollapse && this._interface.get_boolean('enable-animations')) {
-            // Keep the expanded content for the reverse morph: secondary (scroll) leaves first,
-            // the primary header one stagger later, while the surface collapses underneath.
-            for (const [index, child] of this._root.get_children().entries()) {
+            // Keep the expanded content for the reverse morph: it fades out quickly as one
+            // piece while the slab retracts and clips it.
+            for (const child of this._root.get_children()) {
                 const descendants = [child];
                 while (descendants.length) {
                     const actor = descendants.pop();
@@ -379,12 +397,14 @@ export default class Archsport extends Extension {
                     actor.can_focus = false;
                     descendants.push(...actor.get_children());
                 }
-                child.ease({opacity: 0, duration: DESIGN.motion.micro,
-                    delay: index === 0 ? DESIGN.motion.secondaryDelay - DESIGN.motion.primaryDelay : 0,
-                    mode: Clutter.AnimationMode[DESIGN.motion.collapseMode]});
+                easeOnCurve(child, {opacity: 0, duration: DESIGN.motion.micro});
             }
             this._visibility();
-            this._closingTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DESIGN.motion.collapse, () => {
+            // The dock fits the content to compact size after micro, so compact content can
+            // settle while the slab is still shrinking. A slab retracting out of sight stays
+            // empty until it is gone.
+            const rebuildAfter = this._dock.state.visible ? DESIGN.motion.micro : DESIGN.motion.collapse;
+            this._closingTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, rebuildAfter, () => {
                 this._closingTimer = 0;
                 this._render(true);
                 return GLib.SOURCE_REMOVE;
@@ -395,7 +415,8 @@ export default class Archsport extends Extension {
         let expandedHeader = null;
         let expandedBody = null;
         let expandedScroll = null;
-        let fixtureRows = 0;
+        // [actor, from, to] entrances; started only after the slab shows the tree.
+        const entrances = [];
         if (!expanded) {
             this._root.remove_style_class_name('archsport-open');
             const row = new St.BoxLayout({style_class: 'archsport-compact',
@@ -406,7 +427,8 @@ export default class Archsport extends Extension {
             const compactStatus = data.mode === 'demo' ? '시연' : data.health === 'error' ? '오프라인' :
                 match?.status === 'halftime' ? 'HT' : match?.status === 'scheduled' ? '예정' : liveMinute;
             if (compactStatus)
-                row.add_child(this._label(compactStatus, data.health === 'error' ? 'archsport-alert' : 'archsport-caption'));
+                row.add_child(this._label(compactStatus, data.health === 'error' ? 'archsport-alert' :
+                    liveNow ? 'archsport-caption archsport-live-now' : 'archsport-caption'));
             const compact = new St.Button({style_class: 'archsport-compact-button', can_focus: true, x_expand: true,
                 accessible_name: `${match?.home ?? '축구'} ${score}, ${match?.away ?? ''} ${clock || '경기 정보'}. 펼쳐서 일정과 최근 경기 보기`});
             compact.set_child(row);
@@ -416,17 +438,17 @@ export default class Archsport extends Extension {
             this._root.add_style_class_name('archsport-open');
             const header = new St.BoxLayout({style_class: 'archsport-header'});
             const identity = new St.BoxLayout({style_class: 'archsport-identity', x_expand: true});
-            // Schedule view: the section titles below carry the icons, so the header stays text-only.
-            if (alert || (match && match.status !== 'scheduled'))
-                identity.add_child(this._watchedCrestIcon(match, 18) ?? new St.Icon({
-                    icon_name: 'x-office-calendar-symbolic', icon_size: 16,
-                    y_align: Clutter.ActorAlign.CENTER, accessible_name: '경기 일정'}));
+            // Only a real crest earns a place here; the schedule view stays text-only.
+            const headerCrest = alert || (match && match.status !== 'scheduled') ?
+                this._watchedCrestIcon(match, 18) : null;
+            if (headerCrest) identity.add_child(headerCrest);
             const alertTitle = alert?.kind === 'score' ?
                 alert.scoring_side === 'watched' ? 'GOAL' : alert.scoring_side === 'opponent' ? '득점' : alert.title : alert?.title;
             identity.add_child(this._label(data.mode === 'demo' && alertTitle ? `시연 · ${alertTitle}` :
                 alertTitle || (data.mode === 'demo' ? '시연' : data.health === 'error' ?
                     (data.ui_version_mismatch ? data.message : '오프라인') : clock || '경기 정보'),
-                alert ? 'archsport-event-title' : data.health === 'error' ? 'archsport-alert' : 'archsport-live'));
+                alert ? 'archsport-event-title' : data.health === 'error' ? 'archsport-alert' :
+                    liveNow ? 'archsport-live archsport-live-now' : 'archsport-live'));
             header.add_child(identity);
             const tools = new St.BoxLayout({style_class: 'archsport-tools'});
             tools.add_child(this._iconButton('preferences-system-symbolic', '설정', () => this._openPreferences()));
@@ -468,17 +490,15 @@ export default class Archsport extends Extension {
                 const scoreLabel = this._label(score, 'archsport-score');
                 scoreLabel.y_align = Clutter.ActorAlign.CENTER;
                 if (incoming?.kind === 'score') {
-                    scoreLabel.opacity = 0;
-                    scoreLabel.translation_y = 4;
-                    scoreLabel.ease({opacity: 255, translation_y: 0,
-                        duration: this._interface.get_boolean('enable-animations') ? DESIGN.motion.event : 0,
-                        mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+                    // While opening, the body already drops in; a rising score would move against it.
+                    if (!opening) {
+                        entrances.push([scoreLabel, {opacity: 0, translation_y: 4},
+                            {opacity: 255, translation_y: 0, duration: DESIGN.motion.event}]);
+                    }
                     for (const crest of [homeLogo, awayLogo].filter(Boolean)) {
                         crest.set_pivot_point(0.5, 0.5);
-                        crest.scale_x = crest.scale_y = 0.9;
-                        crest.ease({scale_x: 1, scale_y: 1,
-                            duration: this._interface.get_boolean('enable-animations') ? DESIGN.motion.event : 0,
-                            mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+                        entrances.push([crest, {scale_x: 0.9, scale_y: 0.9}, {scale_x: 1, scale_y: 1,
+                            duration: DESIGN.motion.event, delay: opening ? DESIGN.motion.secondaryDelay : 0}]);
                     }
                 }
                 scoreboard.add_child(scoreLabel);
@@ -489,16 +509,18 @@ export default class Archsport extends Extension {
             const latest = alert?.kind === 'score' ? events.filter(e => e.kind === 'Goal' && e.detail !== 'Missed Penalty').at(-1) : events.at(-1);
             if (latest && !spoiler) {
                 const eventLabel = this._label(eventSummary(latest), 'archsport-event');
-                if (incoming && !localScoreFeedback) {
-                    eventLabel.opacity = 0;
-                    eventLabel.translation_y = 7;
-                    eventLabel.ease({opacity: 255, translation_y: 0,
-                        duration: this._interface.get_boolean('enable-animations') ? DESIGN.motion.response : 0,
-                        mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+                // While the notch is opening the whole body already settles in; a second
+                // entrance on this line would move against it.
+                if (incoming && !localScoreFeedback && !opening) {
+                    entrances.push([eventLabel, {opacity: 0, translation_y: -DESIGN.motion.contentShift},
+                        {opacity: 255, translation_y: 0, duration: DESIGN.motion.response}]);
                 }
                 expandedBody.add_child(eventLabel);
-            } else if (match?.home_penalties != null) {
-                expandedBody.add_child(this._label(`PK  ${match.home_penalties} : ${match.away_penalties}`, 'archsport-event'));
+            } else if (!spoiler && match?.home_penalties != null) {
+                const shootout = new St.BoxLayout({style_class: 'archsport-fixture-row'});
+                shootout.add_child(this._label('승부차기', 'archsport-caption'));
+                shootout.add_child(this._label(`${match.home_penalties} : ${match.away_penalties}`, 'archsport-result-score'));
+                expandedBody.add_child(shootout);
             }
             if (this._expanded) {
                 const liveMatch = ['live', 'halftime', 'extra_time', 'penalties', 'interrupted'].includes(match?.status);
@@ -516,11 +538,9 @@ export default class Archsport extends Extension {
                     const otherLive = (context.live_matches ?? []).filter(fixture => fixture.id !== match?.id);
                     if (otherLive.length) {
                         const liveTitle = new St.BoxLayout({style_class: 'archsport-section-title'});
-                        liveTitle.add_child(new St.Icon({icon_name: 'media-record-symbolic', icon_size: 12}));
                         liveTitle.add_child(this._label('다른 진행 경기', 'archsport-caption'));
                         expandedBody.add_child(liveTitle);
                         for (const fixture of otherLive.slice(0, 2)) {
-                            fixtureRows++;
                             const row = new St.BoxLayout({style_class: 'archsport-fixture-row'});
                             row.add_child(this._label(`${fixture.elapsed ?? ''}′`, 'archsport-date'));
                             for (const side of ['home', 'away']) {
@@ -538,20 +558,14 @@ export default class Archsport extends Extension {
                     }
                     if (upcomingMatches.length) {
                         const nextTitle = new St.BoxLayout({style_class: 'archsport-section-title'});
-                        nextTitle.add_child(new St.Icon({icon_name: 'x-office-calendar-symbolic', icon_size: 14}));
                         nextTitle.add_child(this._label('다음 경기', 'archsport-caption'));
                         expandedBody.add_child(nextTitle);
                     }
                     for (const upcoming of upcomingMatches) {
-                        fixtureRows++;
                         const presentation = fixturePresentation(upcoming, this._settings.get_strv('watch-teams'));
                         const nextRow = new St.BoxLayout({style_class: 'archsport-fixture-row'});
                         nextRow.accessible_name = presentation.accessibleName;
-                        if (presentation.crestSide) {
-                            const crest = this._crestIcon(upcoming, presentation.crestSide, 17);
-                            if (crest) nextRow.add_child(crest);
-                            else nextRow.add_child(this._label(presentation.watchedName, 'archsport-watch-name'));
-                        }
+                        nextRow.add_child(this._fixtureLead(upcoming, presentation));
                         const opponent = this._label(presentation.primary, 'archsport-context-text');
                         opponent.x_expand = true;
                         opponent.accessible_name = presentation.accessibleName;
@@ -562,21 +576,15 @@ export default class Archsport extends Extension {
                     }
                     if (recent.length) {
                         const recentTitle = new St.BoxLayout({style_class: 'archsport-section-title'});
-                        recentTitle.add_child(new St.Icon({icon_name: 'document-open-recent-symbolic', icon_size: 14}));
                         recentTitle.add_child(this._label('최근 경기', 'archsport-caption'));
                         expandedBody.add_child(recentTitle);
                     }
                     for (const fixture of recent) {
-                        fixtureRows++;
                         const presentation = fixturePresentation(fixture, this._settings.get_strv('watch-teams'),
                             {result: true, spoiler});
                         const fixtureRow = new St.BoxLayout({style_class: 'archsport-fixture-row'});
                         fixtureRow.accessible_name = presentation.accessibleName;
-                        if (presentation.crestSide) {
-                            const crest = this._crestIcon(fixture, presentation.crestSide, 16);
-                            if (crest) fixtureRow.add_child(crest);
-                            else fixtureRow.add_child(this._label(presentation.watchedName, 'archsport-watch-name'));
-                        }
+                        fixtureRow.add_child(this._fixtureLead(fixture, presentation));
                         const opponent = this._label(presentation.primary, 'archsport-context-text');
                         opponent.x_expand = true;
                         opponent.accessible_name = presentation.accessibleName;
@@ -625,39 +633,51 @@ export default class Archsport extends Extension {
             try {
                 if (monitor === Main.layoutManager.primaryMonitor) panelHeight = Main.panel.height;
             } catch (_error) {}
-            const contentWidth = Math.max(1, width - 2 * DESIGN.spacing.lg);
+            // The root's own CSS padding and row gap are the only chrome, so the slab is
+            // exactly as tall as what it shows: no forehead above the first row.
+            // A notch opening from hidden builds an unmapped tree, and unmapped St widgets
+            // measure without their CSS box spacing and fonts until styled (the first
+            // schedule render used to clip its last row). Style it first so it measures exactly.
+            const ensureStyle = actor => {
+                actor.ensure_style?.();
+                actor.get_children().forEach(ensureStyle);
+            };
+            ensureStyle(this._root);
+            const rootNode = this._root.get_theme_node();
+            const contentWidth = Math.max(1, width - rootNode.get_horizontal_padding());
             const [, headerNatural] = expandedHeader.get_preferred_height(contentWidth);
             const [, bodyNatural] = expandedBody.get_preferred_height(contentWidth);
-            // St can report a shorter preferred height before fixture labels settle in the idle schedule.
-            const bodyEstimate = bodyNatural + (!match || match.status === 'scheduled' ? fixtureRows * 6 : 0);
             const viewport = calculateExpandedViewport({monitorHeight: monitor?.height ?? 800,
-                panelHeight, headerHeight: headerNatural, contentHeight: bodyEstimate});
+                panelHeight, headerHeight: headerNatural, contentHeight: bodyNatural,
+                chromeHeight: rootNode.get_vertical_padding() + rootNode.get_length('spacing')});
             expandedScroll.set_policy(St.PolicyType.NEVER,
-                bodyEstimate > viewport.bodyHeight + 1 ? St.PolicyType.AUTOMATIC : St.PolicyType.NEVER);
+                bodyNatural > viewport.bodyHeight + 1 ? St.PolicyType.AUTOMATIC : St.PolicyType.NEVER);
             expandedScroll.set_height(viewport.bodyHeight);
-            this._contentHeight = viewport.rootHeight + 26;
+            this._contentHeight = viewport.rootHeight;
         } else {
             this._contentHeight = DESIGN.control.compactHeight;
         }
         this._visibility();
+        // Entrances start only now that the slab shows the attached tree; an actor eased
+        // before it is attached never plays.
         if (this._interface.get_boolean('enable-animations')) {
+            // Content drops into place from the panel edge on the slab's own curve.
+            const drop = {opacity: 0, translation_y: -DESIGN.motion.contentShift};
+            const settled = {opacity: 255, translation_y: 0};
             if (opening) {
-                for (const actor of [expandedHeader, expandedScroll]) {
-                    if (actor === expandedScroll && match && match.status !== 'scheduled') continue;
-                    actor.opacity = 0;
-                    actor.translation_y = 4;
-                    actor.ease({opacity: 255, translation_y: 0,
-                        duration: actor === expandedScroll ? DESIGN.motion.secondaryDuration : DESIGN.motion.primaryDuration,
-                        delay: actor === expandedScroll ? DESIGN.motion.secondaryDelay : DESIGN.motion.primaryDelay,
-                        mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
-                }
-            } else if (closing) {
-                const compact = this._root.get_first_child();
-                if (compact) {
-                    compact.opacity = 0;
-                    compact.ease({opacity: 255, duration: DESIGN.motion.micro,
-                        mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
-                }
+                // A beat after the slab starts.
+                entrances.push([expandedHeader, drop, {...settled, duration: DESIGN.motion.primaryDuration,
+                    delay: DESIGN.motion.primaryDelay}]);
+                entrances.push([expandedScroll, drop, {...settled, duration: DESIGN.motion.secondaryDuration,
+                    delay: DESIGN.motion.secondaryDelay}]);
+            } else if (closing && this._dock.state.visible) {
+                // Compact content settles while the slab is still shrinking around it.
+                entrances.push([this._root.get_first_child(), drop,
+                    {...settled, duration: DESIGN.motion.primaryDuration}]);
+            }
+            for (const [actor, from, to] of entrances) {
+                Object.assign(actor, from);
+                easeOnCurve(actor, to);
             }
         }
         this._renderedExpanded = expanded;

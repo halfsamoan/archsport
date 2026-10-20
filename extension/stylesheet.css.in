@@ -3,13 +3,12 @@
     background-color: transparent;
     color: {{color.labelPrimary}};
     border-radius: 0;
-    padding: 28px {{spacing.md}}px 2px;
+    padding: 3px {{spacing.md}}px;
     spacing: {{spacing.sm}}px;
     box-shadow: none;
 }
-.shared-notch-blur { background-color: rgba(9, 10, 12, 0.03); }
 .archsport-notch StLabel, .archsport-notch StButton { font-family: '{{typography.family}}'; }
-.archsport-notch.archsport-open { padding: 35px {{spacing.lg}}px {{spacing.md}}px; spacing: {{spacing.sm}}px; }
+.archsport-notch.archsport-open { padding: 10px 14px 14px; spacing: {{spacing.sm}}px; }
 .archsport-compact { spacing: {{spacing.xs}}px; min-height: 28px; }
 .archsport-compact-button { height: 28px; padding: 0 6px; border-radius: 14px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: {{color.separatorSubtle}}; }
@@ -19,20 +18,19 @@
 .archsport-event-title { color: {{color.labelPrimary}}; font-size: {{typography.primary}}px; font-weight: 600; }
 .archsport-alert { color: {{color.accentWarning}}; font-size: {{typography.secondary}}px; font-weight: 600; }
 .archsport-team { min-width: 70px; color: {{color.labelPrimary}}; font-weight: 600; font-size: {{typography.compactScore}}px; }
-.archsport-team-name { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; font-weight: 600; }
+.archsport-team-name { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; font-weight: 600; }
 .archsport-score { min-width: 100px; color: {{color.labelPrimary}}; font-size: {{typography.hero}}px; font-weight: 600; }
 .archsport-caption { color: {{color.labelTertiary}}; font-size: {{typography.secondary}}px; }
-.archsport-event { color: {{color.labelPrimary}}; font-size: 13px; font-weight: 600; }
+.archsport-event { color: {{color.labelSecondary}}; font-size: 13px; font-weight: 500; }
 .archsport-header, .archsport-identity, .archsport-tools, .archsport-scoreboard,
 .archsport-side, .archsport-context-row, .archsport-section-title,
 .archsport-fixture-row, .archsport-stats { spacing: {{spacing.sm}}px; }
 .archsport-body { spacing: {{spacing.sm}}px; }
-.archsport-scroll { min-height: 0; border-radius: 12px; }
+.archsport-scroll { min-height: 0; }
 .archsport-scroll StScrollBar { -slider-width: 2px; }
 .archsport-scroll StScrollBar StBin#trough { background-color: transparent; }
 .archsport-header { min-height: 28px; }
 .archsport-identity { spacing: 8px; }
-.archsport-brand { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; font-weight: 700; letter-spacing: 0.02em; }
 .archsport-icon-button { width: {{control.size}}px; height: {{control.size}}px; color: {{color.labelSecondary}}; border-radius: 8px; background-color: transparent; }
 .archsport-icon-button:hover { background-color: {{color.hoverWash}}; }
 .archsport-icon-button:active { background-color: {{color.pressedWash}}; }
@@ -44,13 +42,14 @@
 .archsport-context-text { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; }
 .archsport-watch-name { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
 .archsport-section-title { min-height: 24px; color: {{color.labelTertiary}}; }
-.archsport-section-title StIcon { color: {{color.labelTertiary}}; }
-.archsport-count { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
+.archsport-section-title StLabel { font-size: {{typography.caption}}px; font-weight: 600; }
 .archsport-empty { min-height: 36px; spacing: {{spacing.sm}}px; color: {{color.labelTertiary}}; }
-.archsport-empty StIcon { color: {{color.focus}}; }
+.archsport-empty .archsport-context-text { color: {{color.labelSecondary}}; }
 .archsport-date { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
 .archsport-result-score { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; font-weight: 600; }
 .archsport-fixture-row { min-height: 22px; spacing: 8px; }
+/* Crest or short name; fixed so opponent names share one start line. */
+.archsport-fixture-lead { width: 36px; }
 .archsport-stats { min-height: 28px; spacing: {{spacing.md}}px; }
 .archsport-stat { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; }
 
@@ -60,3 +59,9 @@
 }
 .archsport-context-toggle:hover { color: {{color.labelPrimary}}; }
 .archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
+
+/* Digits that change in place keep their width. */
+.archsport-team, .archsport-score, .archsport-live, .archsport-caption, .archsport-date,
+.archsport-result-score, .archsport-stat, .archsport-event { font-feature-settings: "tnum"; }
+/* Last so it wins over .archsport-caption / .archsport-live at equal specificity. */
+.archsport-live-now { color: {{color.accentPositive}}; }

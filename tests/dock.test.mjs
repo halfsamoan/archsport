@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape,
-    classifyOutsideSurface, dispatchOutsideDismiss} from '../extension/dockModel.js';
+    classifyOutsideSurface, dispatchOutsideDismiss, notchGeometry} from '../extension/dockModel.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary} from '../extension/uiModel.js';
 
 test('score event celebrates only a verified watched-team increase', () => {
@@ -25,7 +25,7 @@ test('event summary stays readable with extra time and missing provider fields',
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from '../extension/alertQueue.js';
 
 test('sport and memory notches share a centered row', () => {
-    assert.equal(DOCK_PROTOCOL, 5);
+    assert.equal(DOCK_PROTOCOL, 6);
     const [sport, memory] = layoutNotches([
         {id: 'archsport', width: 360, order: 0},
         {id: 'matci', width: 220, order: 1},
@@ -90,13 +90,22 @@ test('outside-click hit testing includes descendant controls and blank actor bou
     assert.equal(isPointWithinActor(root, 501, 100), false);
 });
 
-test('transparent shoulder corners are outside while neck and body accept input', () => {
-    assert.equal(pointInNotchShape(4, 4, 388, 250), false);
-    assert.equal(pointInNotchShape(194, 4, 388, 250), true);
-    assert.equal(pointInNotchShape(35, 26, 388, 250), false);
-    assert.equal(pointInNotchShape(190, 26, 388, 250), true);
-    assert.equal(pointInNotchShape(190, 220, 388, 250), true);
-    assert.equal(pointInNotchShape(0, 250, 388, 250), false);
+test('slab geometry: short ears, rounded bottom, seed sliver', () => {
+    assert.deepEqual(notchGeometry(34, 212), {ear: 6, radius: 15, sliver: false});
+    assert.deepEqual(notchGeometry(250, 416), {ear: 14, radius: 22, sliver: false});
+    assert.equal(notchGeometry(6, 104).sliver, true);
+});
+
+test('transparent ears and bottom corners are outside while the slab accepts input', () => {
+    // 388 body + 2 × 14 ears.
+    assert.equal(pointInNotchShape(4, 4, 416, 250), false);
+    assert.equal(pointInNotchShape(10, 120, 416, 250), false);
+    assert.equal(pointInNotchShape(208, 1, 416, 250), true);
+    assert.equal(pointInNotchShape(15, 1, 416, 250), true);
+    assert.equal(pointInNotchShape(20, 120, 416, 250), true);
+    assert.equal(pointInNotchShape(20, 249, 416, 250), false);
+    assert.equal(pointInNotchShape(208, 249, 416, 250), true);
+    assert.equal(pointInNotchShape(0, 250, 416, 250), false);
 });
 
 test('only the active notch trigger is exempt from outside dismissal', () => {
@@ -181,17 +190,71 @@ test('re-enable keeps the worker generation monotonic so same-tick stale reads c
     assert.doesNotMatch(source, /this\._generation = 0;/);
 });
 
-test('blur inset and hit-region margins survive St style resets', async () => {
-    const {DESIGN} = await import('../extension/designTokens.js');
+test('hit-region margins survive St style resets', () => {
     const source = readFileSync(new URL('../extension/notchSurface.js', import.meta.url), 'utf8');
-    // St re-applies CSS margins on every style change, so margin_* constructor properties reset to 0
-    // and the BACKGROUND blur then paints the whole surface rectangle past the rounded corners.
+    // St re-applies CSS margins on every style change, so margin_* constructor properties reset to 0.
     assert.doesNotMatch(source, /margin_(left|right|top|bottom)\s*:/);
-    assert.match(source, /style: `margin: /);
     // Hit-region margins are re-applied after style changes for the same reason.
     assert.match(source, /connect\('style-changed', updateHitRegions\)/);
-    // The Cairo Bézier corner reaches 0.3125 × radius inward at its diagonal midpoint.
-    assert.ok(DESIGN.material.blurInset >= 0.3125 * DESIGN.radius.surface);
+});
+
+test('compact row fits the 34 px slab and the open notch has no forehead', async () => {
+    const {DESIGN} = await import('../extension/designTokens.js');
+    const css = readFileSync(new URL('../extension/stylesheet.css', import.meta.url), 'utf8');
+    const [, compactY] = css.match(/\.archsport-notch \{[^}]*padding: (\d+)px \d+px;/);
+    const [, button] = css.match(/\.archsport-compact-button \{ height: (\d+)px/);
+    assert.equal(2 * Number(compactY) + Number(button), DESIGN.control.compactHeight);
+    const [, top, side, bottom] = css.match(/\.archsport-notch\.archsport-open \{ padding: (\d+)px (\d+)px (\d+)px;/).map(Number);
+    assert.ok(top <= 12);
+    assert.equal(side, bottom);
+    // The slab height comes from the root's real padding, not a hand-tuned constant.
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /chromeHeight: rootNode\.get_vertical_padding\(\) \+ rootNode\.get_length\('spacing'\)/);
+    assert.match(source, /this\._contentHeight = viewport\.rootHeight;/);
+});
+
+test('content motion rides the slab curve and enters from the panel edge', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /import \{DockParticipant, easeOnCurve\} from '\.\/notchDock\.js';/);
+    assert.doesNotMatch(source, /\.ease\(\{/);
+    assert.doesNotMatch(source, /EASE_OUT_CUBIC/);
+    assert.match(source, /const drop = \{opacity: 0, translation_y: -DESIGN\.motion\.contentShift\};/);
+});
+
+test('entrances start after the slab shows the attached tree', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    const build = source.slice(source.indexOf('for (const child of this._root.get_children()) child.destroy();'),
+        source.indexOf('        this._visibility();\n        // Entrances start'));
+    assert.ok(build.length > 1000);
+    // Score roll-up, crest pulse and event line are queued while the tree is built, never eased there.
+    assert.doesNotMatch(build, /easeOnCurve\(|\.opacity = 0|translation_y = /);
+    assert.match(source, /for \(const \[actor, from, to\] of entrances\) \{\n\s+Object\.assign\(actor, from\);\n\s+easeOnCurve\(actor, to\);/);
+});
+
+test('collapse rebuilds compact content while the slab is still shrinking', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    // The dock fits the content to compact size after micro; rebuilding then avoids an empty slab.
+    assert.match(source, /const rebuildAfter = this\._dock\.state\.visible \? DESIGN\.motion\.micro : DESIGN\.motion\.collapse;/);
+    assert.match(source, /this\._closingTimer = GLib\.timeout_add\(GLib\.PRIORITY_DEFAULT, rebuildAfter,/);
+    assert.match(source, /entrances\.push\(\[this\._root\.get_first_child\(\), drop,\n\s+\{\.\.\.settled, duration: DESIGN\.motion\.primaryDuration\}\]\);/);
+});
+
+test('expanded height is measured from styled actors without a fudge factor', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /fixtureRows|bodyEstimate/);
+    assert.ok(source.indexOf('ensureStyle(this._root);') < source.indexOf('expandedBody.get_preferred_height('));
+    // The recursion is what styles unmapped descendants before measuring.
+    assert.match(source, /actor\.ensure_style\?\.\(\);\n\s+actor\.get_children\(\)\.forEach\(ensureStyle\)/);
+    assert.match(source, /contentHeight: bodyNatural,/);
+});
+
+test('fixture rows share a fixed lead column and shoot-out scores respect spoiler mode', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../extension/stylesheet.css', import.meta.url), 'utf8');
+    assert.match(css, /\.archsport-fixture-lead \{ width: \d+px; \}/);
+    assert.equal(source.match(/add_child\(this\._fixtureLead\(/g)?.length, 2);
+    assert.match(source, /\} else if \(!spoiler && match\?\.home_penalties != null\) \{/);
+    assert.match(source, /\$\{match\.home_penalties\} : \$\{match\.away_penalties\}`, 'archsport-result-score'\)/);
 });
 
 test('numpad toggle shortcut is bound on enable and released on disable', () => {

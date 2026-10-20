@@ -1,27 +1,31 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Graphene from 'gi://Graphene';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape, isPointWithinNotch, classifyOutsideSurface,
-    shouldDismissOutside, dispatchOutsideDismiss} from './dockModel.js';
+    shouldDismissOutside, dispatchOutsideDismiss, notchGeometry} from './dockModel.js';
 import {DESIGN} from './designTokens.js';
 
 // One registry and one capture-phase listener for the two independently installed extensions.
 const KEY = `_archsportMatciNotchDock_v${DOCK_PROTOCOL}`;
 const OPEN_MS = DESIGN.motion.expand;
 const CLOSE_MS = DESIGN.motion.collapse;
-const POSITION_MS = DESIGN.motion.expand;
+const [CURVE_X1, CURVE_Y1, CURVE_X2, CURVE_Y2] = DESIGN.motion.curve;
 
 function layoutSourceHash() {
     let hash = 2166136261;
-    const contract = [`protocol=${DOCK_PROTOCOL}`, `open=${OPEN_MS}`, `close=${CLOSE_MS}`, `position=${POSITION_MS}`,
+    // Geometry values are part of the contract: two builds that draw or hit-test
+    // different slabs must not share one dock silently.
+    const contract = [`protocol=${DOCK_PROTOCOL}`, `open=${OPEN_MS}`, `close=${CLOSE_MS}`,
+        `curve=${DESIGN.motion.curve}`, JSON.stringify(DESIGN.geometry), JSON.stringify(DESIGN.radius),
         disconnectCapture, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
-        pointInNotchShape, isPointWithinNotch,
+        pointInNotchShape, isPointWithinNotch, notchGeometry,
         classifyOutsideSurface, shouldDismissOutside, dispatchOutsideDismiss,
-        eventCoordinates, buttonNumber, clearMorph, queueStage, hideActor, showActor,
+        eventCoordinates, buttonNumber, clearMorph, allocationFor, easeOnCurve, morph, hideActor, showActor,
         insideActiveSurface, getDock, DockParticipant]
         .map(fn => typeof fn === 'string' ? fn : fn.toString()).join('|');
-    for (const char of `${contract}|capture-dismiss-v5|morph-v6|${DESIGN.motion.expandMode}|${DESIGN.motion.collapseMode}`) {
+    for (const char of `${contract}|capture-dismiss-v5|slab-v1`) {
         hash ^= char.charCodeAt(0);
         hash = Math.imul(hash, 16777619);
     }
@@ -49,18 +53,32 @@ function eventCoordinates(event) {
 }
 
 function clearMorph(participant) {
-    for (const source of participant.morphSources) GLib.source_remove(source);
-    participant.morphSources = [];
+    if (participant.fitSource) GLib.source_remove(participant.fitSource);
+    participant.fitSource = 0;
     participant.actor?.remove_all_transitions();
 }
 
-function queueStage(participant, delay, transitionId, callback) {
-    const source = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
-        participant.morphSources = participant.morphSources.filter(id => id !== source);
-        if (!participant.disposed && participant.transitionId === transitionId) callback();
-        return GLib.SOURCE_REMOVE;
-    });
-    participant.morphSources.push(source);
+// Placements describe the body; the slab adds its ears on both sides.
+function allocationFor(placement) {
+    const {ear} = notchGeometry(placement.height, placement.width);
+    return {x: placement.x - ear, y: placement.y, width: placement.width + 2 * ear, height: placement.height};
+}
+
+const EASE_OPTIONS = new Set(['duration', 'delay', 'mode', 'onComplete', 'onStopped', 'repeatCount', 'autoReverse']);
+
+// The slab and its content share one curve so they read as one motion.
+export function easeOnCurve(actor, params) {
+    actor.ease({mode: Clutter.AnimationMode.EASE_OUT_QUART, ...params});
+    const first = new Graphene.Point({x: CURVE_X1, y: CURVE_Y1});
+    const second = new Graphene.Point({x: CURVE_X2, y: CURVE_Y2});
+    // Transitions are keyed by the canonical property name (translation-y, scale-x).
+    for (const property of Object.keys(params).filter(key => !EASE_OPTIONS.has(key)))
+        actor.get_transition(property.replaceAll('_', '-'))?.set_cubic_bezier_progress(first, second);
+}
+
+// One transform from the current geometry, so a re-click turns back mid-flight.
+function morph(actor, target, duration, onComplete) {
+    easeOnCurve(actor, {...target, duration, onComplete});
 }
 
 function hideActor(dock, participant, animate = true) {
@@ -87,19 +105,18 @@ function hideActor(dock, participant, animate = true) {
     }
     participant.closing = true;
     try {
+        // Back into the panel edge: the slab retracts to the seed sliver it grew from.
         const center = actor.x + actor.width / 2;
-        actor.ease({x: center - DESIGN.geometry.neckWidth / 2,
-            width: DESIGN.geometry.neckWidth, height: 8, duration,
-            mode: Clutter.AnimationMode[DESIGN.motion.collapseMode],
-            onComplete: () => {
-                if (dock.shuttingDown || participant.disposed || participant.transitionId !== transitionId)
-                    return;
-                participant.closing = false;
-                if (!participant.state.visible || participant.lastFallback) {
-                    try { actor.visible = false; } catch (_error) { return; }
-                }
-                try { actor.opacity = 255; } catch (_error) {}
-            }});
+        morph(actor, {x: center - DESIGN.geometry.neckWidth / 2, width: DESIGN.geometry.neckWidth,
+            height: DESIGN.geometry.seedHeight}, duration, () => {
+            if (dock.shuttingDown || participant.disposed || participant.transitionId !== transitionId)
+                return;
+            participant.closing = false;
+            if (!participant.state.visible || participant.lastFallback) {
+                try { actor.visible = false; } catch (_error) { return; }
+            }
+            try { actor.opacity = 255; } catch (_error) {}
+        });
     } catch (_error) {
         participant.closing = false;
         try { actor.visible = false; } catch (_ignored) {}
@@ -110,7 +127,8 @@ function showActor(dock, participant, placement) {
     const actor = participant.actor;
     if (!actor || participant.disposed || dock.shuttingDown) return;
     const wasHidden = !actor.visible;
-    const target = `${placement.x}:${placement.y}:${placement.width}:${placement.height}`;
+    const slab = allocationFor(placement);
+    const target = `${slab.x}:${slab.y}:${slab.width}:${slab.height}`;
     if (!wasHidden && !participant.closing && participant.targetGeometry === target) return;
     clearMorph(participant);
     participant.transitionId++;
@@ -124,41 +142,36 @@ function showActor(dock, participant, placement) {
         } catch (_error) {
             duration = 0;
         }
-        const {width, height} = placement;
-        const center = placement.x + width / 2;
+        const content = actor._notchContent;
+        const fitContent = () => content?.set_size(placement.width, placement.height);
         if (wasHidden) {
-            actor.set_position(center - DESIGN.geometry.neckWidth / 2, placement.y);
-            actor.set_size(DESIGN.geometry.neckWidth, 8);
+            const center = slab.x + slab.width / 2;
+            actor.set_position(center - DESIGN.geometry.neckWidth / 2, slab.y);
+            actor.set_size(DESIGN.geometry.neckWidth, DESIGN.geometry.seedHeight);
             actor.visible = true;
         }
         actor.opacity = 255;
         if (!duration) {
-            actor.set_position(placement.x, placement.y);
-            actor.set_size(width, height);
+            fitContent();
+            actor.set_position(slab.x, slab.y);
+            actor.set_size(slab.width, slab.height);
             return;
         }
-        if (!wasHidden && (height < actor.height || width < actor.width)) {
-            actor.ease({x: placement.x, y: placement.y, width, height,
-                duration: CLOSE_MS, mode: Clutter.AnimationMode[DESIGN.motion.collapseMode]});
-            return;
+        // Content is revealed at its final size. Only a collapse keeps the old size
+        // until the slab has settled, so the fading expanded content is not reflowed.
+        const shrinking = !wasHidden && (slab.height < actor.height || slab.width < actor.width);
+        const collapsing = shrinking && !placement.expanded;
+        if (!collapsing) fitContent();
+        // The expanded content has faded out after micro ms; from then on the compact
+        // content can settle while the slab is still shrinking.
+        if (collapsing) {
+            participant.fitSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DESIGN.motion.micro, () => {
+                participant.fitSource = 0;
+                if (!participant.disposed && participant.transitionId === transitionId) fitContent();
+                return GLib.SOURCE_REMOVE;
+            });
         }
-        if (!wasHidden && Math.abs(height - actor.height) < 2 && Math.abs(width - actor.width) < 2) {
-            actor.ease({x: placement.x, y: placement.y, duration,
-                mode: Clutter.AnimationMode[DESIGN.motion.expandMode]});
-            return;
-        }
-        const middleWidth = Math.max(actor.width, Math.min(width, Math.round(width * 0.6)));
-        const middleHeight = Math.min(height, Math.max(actor.height + 20, 42));
-        if (wasHidden) actor.ease({x: center - (DESIGN.geometry.neckWidth + 8) / 2,
-            width: DESIGN.geometry.neckWidth + 8, height: 12,
-            duration: 45, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
-        queueStage(participant, wasHidden ? 25 : 0, transitionId, () =>
-            actor.ease({x: center - middleWidth / 2, y: placement.y,
-                width: middleWidth, height: middleHeight, duration: 95,
-                mode: Clutter.AnimationMode[DESIGN.motion.expandMode]}));
-        queueStage(participant, 70, transitionId, () =>
-            actor.ease({x: placement.x, y: placement.y, width, height, duration: 140,
-                mode: Clutter.AnimationMode.EASE_IN_OUT_CUBIC}));
+        morph(actor, slab, shrinking ? CLOSE_MS : duration);
     } catch (_error) {
         // A stale actor is left to Shell teardown; do not retry UI work during shutdown.
     }
@@ -221,7 +234,8 @@ function getDock() {
                 } catch (_error) {
                     if (this.shuttingDown) return;
                 }
-                for (const placement of layoutNotches(entries, {...monitor, panelHeight})) {
+                // Two slabs keep clear of each other's ears instead of bridging at the panel.
+                for (const placement of layoutNotches(entries, {...monitor, panelHeight}, 2 * DESIGN.geometry.earMax)) {
                     const participant = this.participants.get(placement.id);
                     if (!participant || participant.disposed) continue;
                     participant.lastFallback = placement.fallback;
@@ -272,9 +286,9 @@ export class DockParticipant {
         this.triggerActor = triggerActor;
         this.animations = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
         this.targetGeometry = null;
-        this.morphSources = [];
         this.lastFallback = false;
         this.transitionId = 0;
+        this.fitSource = 0;
         this.closing = false;
         this.disposed = false;
         this.state = {width: 360, height: 46, visible: false, expanded: false};

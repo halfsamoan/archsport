@@ -1,6 +1,15 @@
 // Pure geometry shared by the native dock, web preview, and Node checks.
 import {DESIGN} from './designTokens.js';
-export const DOCK_PROTOCOL = 5;
+export const DOCK_PROTOCOL = 6;
+
+// One slab continuing the top panel: concave ears at the top corners, vertical
+// sides, rounded bottom. Ears grow with height; low slabs get a smaller radius.
+export function notchGeometry(height, width = Infinity) {
+    const {earMin, earMax} = DESIGN.geometry;
+    const ear = Math.max(0, Math.min(earMax, Math.max(earMin, Math.round(height * 0.1)), Math.floor(width / 4)));
+    const radius = Math.max(0, Math.min(DESIGN.radius.surface, Math.round(height * 0.45), height - ear));
+    return {ear, radius, sliver: height <= ear + 4 || radius < 1};
+}
 
 export function buttonNumber(result) {
     if (Array.isArray(result)) return result[1] ?? 0;
@@ -34,22 +43,16 @@ export function isPointWithinActor(actor, x, y) {
     }
 }
 
-// Three simple regions follow the visual neck/shoulder/body closely enough for
-// pointer routing without treating the transparent top corners as the dock.
+// The slab between the ears accepts the pointer; the ears and the space outside
+// the rounded bottom corners stay with whatever is underneath.
 export function pointInNotchShape(x, y, width, height) {
     if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0 ||
         x < 0 || y < 0 || x > width || y > height) return false;
-    const neck = Math.min(DESIGN.geometry.neckWidth, Math.max(1, width - 24));
-    const neckHeight = DESIGN.geometry.neckHeight;
-    const shoulder = Math.min(height <= 60 ? DESIGN.geometry.compactShoulder :
-        neckHeight + DESIGN.geometry.shoulderDepth, Math.max(neckHeight, height - 12));
-    const half = neck / 2 + (width - neck) / 2 *
-        Math.max(0, Math.min(1, (y - neckHeight) / Math.max(1, shoulder - neckHeight)));
-    if (y < shoulder) return y < neckHeight ? Math.abs(x - width / 2) <= neck / 2 :
-        Math.abs(x - width / 2) <= half;
-    const radius = Math.min(DESIGN.radius.surface, Math.max(1, height - shoulder));
-    if (y <= height - radius || (x >= radius && x <= width - radius)) return true;
-    const cx = x < radius ? radius : width - radius;
+    const {ear, radius, sliver} = notchGeometry(height, width);
+    if (sliver) return true;
+    if (x < ear || x > width - ear) return false;
+    if (y <= height - radius) return true;
+    const cx = Math.min(Math.max(x, ear + radius), width - ear - radius);
     return (x - cx) ** 2 + (y - (height - radius)) ** 2 <= radius ** 2;
 }
 

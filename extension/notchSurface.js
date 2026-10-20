@@ -1,123 +1,101 @@
+import Cairo from 'cairo';
 import Clutter from 'gi://Clutter';
-import Shell from 'gi://Shell';
 import St from 'gi://St';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {DESIGN} from './designTokens.js';
+import {notchGeometry} from './dockModel.js';
 
-// The drawing area paints the tint and edge only. It does not clip BlurEffect,
-// and a BACKGROUND blur paints its whole allocation. Blur is inset into the body,
-// where its rectangle stays inside the silhouette even at the rounded bottom
-// corners (the Bézier corner reaches ~0.31 × radius inward).
+// The surface continues the top panel as one opaque slab: concave ears where it
+// leaves the panel, vertical sides, a rounded bottom. Its colour is read from the
+// panel so the seam disappears; a faint downward lift and key line give material.
 export function createNotchSurface(content) {
     const surface = new St.Widget({layout_manager: new Clutter.BinLayout(),
-        width: DESIGN.geometry.neckWidth, height: 8, visible: false, clip_to_allocation: true});
-    const inset = DESIGN.material.blurInset;
-    // St re-applies CSS margins on every style change, so margin_* properties
-    // would reset to 0; the inset has to live in the widget's own style.
-    const blur = new St.Widget({style_class: 'shared-notch-blur', reactive: false,
-        x_expand: true, y_expand: true, visible: false,
-        style: `margin: ${DESIGN.geometry.neckHeight + DESIGN.geometry.shoulderDepth + 2}px ${inset}px ${inset}px;`});
-    let hasBlur = false;
-    try {
-        const properties = new Set(Shell.BlurEffect.list_properties().map(p => p.name));
-        if (!['mode', 'radius', 'brightness'].every(name => properties.has(name)))
-            throw new Error('GNOME BlurEffect properties unavailable');
-        blur.add_effect(new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND,
-            radius: DESIGN.material.blurRadius, brightness: DESIGN.material.blurBrightness}));
-        surface.add_child(blur);
-        hasBlur = true;
-    } catch (error) {
-        console.warn(`[notchSurface] backdrop blur unavailable: ${error.message}`);
-        blur.destroy();
-    }
+        width: DESIGN.geometry.neckWidth, height: DESIGN.geometry.seedHeight,
+        visible: false, clip_to_allocation: true});
+    let base = [0, 0, 0];
+    const readPanelColor = () => {
+        try {
+            const color = Main.panel.get_theme_node().get_background_color();
+            // A translucent panel theme cannot be matched; fall back to black.
+            base = color.alpha === 255 ? [color.red / 255, color.green / 255, color.blue / 255] : [0, 0, 0];
+        } catch (_error) {
+            base = [0, 0, 0];
+        }
+    };
+    readPanelColor();
 
     const shape = new St.DrawingArea({reactive: false, x_expand: true, y_expand: true});
     shape.connect('repaint', area => {
         const [width, height] = area.get_surface_size();
         if (width < 1 || height < 1) return;
         const context = area.get_context();
-        if (height <= DESIGN.geometry.neckHeight + 2) {
-            // Ignition frames are the neck alone; the shoulder curves self-intersect at this size.
+        const {ear, radius, sliver} = notchGeometry(height, width);
+        if (sliver) {
+            // The seed sliver is the panel edge pulled down; no corners at this size.
             context.rectangle(0, 0, width, height);
-            context.setSourceRGBA(0.035, 0.039, 0.047, DESIGN.material.tintAlpha);
-            context.fill();
-            context.$dispose();
-            return;
+        } else {
+            context.moveTo(0, 0);
+            context.arc(0, ear, ear, -Math.PI / 2, 0);
+            context.lineTo(ear, height - radius);
+            context.arcNegative(ear + radius, height - radius, radius, Math.PI, Math.PI / 2);
+            context.lineTo(width - ear - radius, height);
+            context.arcNegative(width - ear - radius, height - radius, radius, Math.PI / 2, 0);
+            context.lineTo(width - ear, ear);
+            context.arc(width, ear, ear, Math.PI, 1.5 * Math.PI);
+            context.closePath();
         }
-        const center = width / 2;
-        const neck = Math.min(DESIGN.geometry.neckWidth, Math.max(1, width - 24));
-        const compact = height <= 60;
-        const shoulder = Math.min(compact ? DESIGN.geometry.compactShoulder :
-            DESIGN.geometry.neckHeight + DESIGN.geometry.shoulderDepth,
-        Math.max(DESIGN.geometry.neckHeight, height - 12));
-        const radius = Math.min(DESIGN.radius.surface, Math.max(1, height - shoulder));
-        const start = center - neck / 2;
-        const end = center + neck / 2;
-        context.moveTo(start, 0);
-        context.lineTo(end, 0);
-        context.lineTo(end, DESIGN.geometry.neckHeight);
-        context.curveTo(end + 2, shoulder - 3, width - 28, shoulder - 8, width, shoulder);
-        context.lineTo(width, height - radius);
-        context.curveTo(width, height - radius / 2, width - radius / 2, height,
-            width - radius, height);
-        context.lineTo(radius, height);
-        context.curveTo(radius / 2, height, 0, height - radius / 2, 0, height - radius);
-        context.lineTo(0, shoulder);
-        context.curveTo(28, shoulder - 8, start - 2, shoulder - 3, start, DESIGN.geometry.neckHeight);
-        context.closePath();
-        context.setSourceRGBA(0.035, 0.039, 0.047, DESIGN.material.tintAlpha);
-        context.fillPreserve();
-        context.setSourceRGBA(1, 1, 1, DESIGN.material.highlightAlpha);
-        context.setLineWidth(1);
-        context.stroke();
+        const lift = DESIGN.material.lift;
+        const fill = new Cairo.LinearGradient(0, 0, 0, height);
+        fill.addColorStopRGB(0, ...base);
+        fill.addColorStopRGB(1, ...base.map(channel => channel + (1 - channel) * lift));
+        context.setSource(fill);
+        if (sliver) {
+            context.fill();
+        } else {
+            context.fillPreserve();
+            // Key line half a pixel inside the edge, on the ears, sides and bottom only:
+            // the top edge belongs to the panel.
+            context.newPath();
+            context.arc(0, ear, ear + 0.5, -Math.PI / 2, 0);
+            context.lineTo(ear + 0.5, height - radius);
+            context.arcNegative(ear + radius, height - radius, radius - 0.5, Math.PI, Math.PI / 2);
+            context.lineTo(width - ear - radius, height - 0.5);
+            context.arcNegative(width - ear - radius, height - radius, radius - 0.5, Math.PI / 2, 0);
+            context.lineTo(width - ear - 0.5, ear);
+            context.arc(width, ear, ear + 0.5, Math.PI, 1.5 * Math.PI);
+            context.setSourceRGBA(1, 1, 1, DESIGN.material.keyLineAlpha);
+            context.setLineWidth(1);
+            context.stroke();
+        }
         // GNOME Shell's own repaint handlers free the Cairo context immediately.
         context.$dispose();
     });
     surface.add_child(shape);
-    const neckHit = new St.Widget({reactive: true, can_focus: false,
-        x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.FILL,
-        y_expand: true, width: DESIGN.geometry.neckWidth});
-    surface.add_child(neckHit);
-    const shoulderHits = [0.1, 0.3, 0.65].map(() => {
-        const hit = new St.Widget({reactive: true, can_focus: false,
-            x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.FILL,
-            y_expand: true});
-        surface.add_child(hit);
-        return hit;
-    });
-    const bodyHit = new St.Widget({reactive: true, can_focus: false,
-        x_expand: true, y_expand: true});
-    surface.add_child(bodyHit);
+    Main.panel.connectObject('style-changed', () => {
+        readPanelColor();
+        shape.queue_repaint();
+    }, surface);
+
+    // Two reactive regions approximate the slab without the ears.
+    const bodyHit = new St.Widget({reactive: true, can_focus: false, x_expand: true, y_expand: true});
     const bottomHit = new St.Widget({reactive: true, can_focus: false,
-        x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.FILL,
-        y_expand: true});
+        x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.FILL, y_expand: true});
+    surface.add_child(bodyHit);
     surface.add_child(bottomHit);
     const updateHitRegions = () => {
         const width = Math.max(1, surface.width);
         const height = Math.max(1, surface.height);
-        const neck = Math.min(DESIGN.geometry.neckWidth, Math.max(1, width - 24));
-        const shoulder = height <= 60 ? DESIGN.geometry.compactShoulder :
-            DESIGN.geometry.neckHeight + DESIGN.geometry.shoulderDepth;
-        const radius = Math.min(DESIGN.radius.surface, Math.max(1, height - shoulder));
-        neckHit.width = neck;
-        neckHit.margin_bottom = Math.max(0, height - DESIGN.geometry.neckHeight);
-        const bandHeight = (shoulder - DESIGN.geometry.neckHeight) / shoulderHits.length;
-        for (const [index, hit] of shoulderHits.entries()) {
-            hit.width = Math.round(neck + (width - neck) * [0.1, 0.3, 0.65][index]);
-            const top = Math.round(DESIGN.geometry.neckHeight + index * bandHeight);
-            hit.margin_top = top;
-            hit.margin_bottom = Math.max(0, height - Math.ceil(top + bandHeight));
-        }
-        bodyHit.margin_top = shoulder;
-        bodyHit.margin_bottom = radius;
-        bottomHit.width = Math.max(1, width - 2 * radius);
+        const {ear, radius, sliver} = notchGeometry(height, width);
+        bodyHit.margin_left = bodyHit.margin_right = sliver ? 0 : ear;
+        bodyHit.margin_bottom = sliver ? 0 : radius;
+        bottomHit.width = Math.max(1, width - 2 * (ear + radius));
         bottomHit.margin_top = Math.max(0, height - radius);
     };
     // A theme reload (e.g. light/dark switch) resets margin_* to the CSS value 0,
-    // which would make the transparent corners reactive until the next resize.
-    for (const hit of [neckHit, ...shoulderHits, bodyHit, bottomHit])
+    // which would make the transparent ears reactive until the next resize.
+    for (const hit of [bodyHit, bottomHit])
         hit.connect('style-changed', updateHitRegions);
     surface.connect('notify::height', () => {
-        if (hasBlur) blur.visible = surface.height > 60;
         updateHitRegions();
         shape.queue_repaint();
     });
@@ -125,9 +103,15 @@ export function createNotchSurface(content) {
         updateHitRegions();
         shape.queue_repaint();
     });
-    content.x_expand = true;
-    content.y_expand = true;
-    surface.add_child(content);
+    // Content keeps its final size and is revealed by the growing slab instead of
+    // being relaid out every frame of the morph. BinLayout would clamp it to the
+    // slab, so a fixed-layout holder allocates its preferred size, top-centred.
+    const holder = new Clutter.Actor({layout_manager: new Clutter.FixedLayout(), x_expand: true, y_expand: true});
+    content.add_constraint(new Clutter.AlignConstraint({source: holder,
+        align_axis: Clutter.AlignAxis.X_AXIS, factor: 0.5}));
+    holder.add_child(content);
+    surface.add_child(holder);
+    surface._notchContent = content;
     updateHitRegions();
     return surface;
 }

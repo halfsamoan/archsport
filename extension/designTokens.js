@@ -14,23 +14,23 @@ export const DESIGN = {
     "control": 12
   },
   "color": {
-    "surfacePrimary": "rgba(9, 10, 12, 0.82)",
+    "surfacePrimary": "#000000",
     "surfaceElevated": "#23252a",
     "labelPrimary": "#f5f5f7",
-    "labelSecondary": "#b5b7be",
-    "labelTertiary": "#a8abb2",
+    "labelSecondary": "#a1a1a8",
+    "labelTertiary": "#808087",
     "separatorSubtle": "rgba(255, 255, 255, 0.07)",
-    "focus": "#8ab4ff",
-    "accentPositive": "#5dd879",
-    "accentWarning": "#ffb84d",
-    "accentCritical": "#ff5f56",
+    "focus": "#0a84ff",
+    "accentPositive": "#30d158",
+    "accentWarning": "#ff9230",
+    "accentCritical": "#ff4245",
     "surfaceHover": "#303238",
     "surfacePressed": "#3a3c43",
     "surfaceTrack": "#292b30",
     "hoverWash": "rgba(255, 255, 255, 0.07)",
     "pressedWash": "rgba(255, 255, 255, 0.12)",
-    "actionPrimary": "#006fe6",
-    "actionHover": "#0066d3",
+    "actionPrimary": "#0a84ff",
+    "actionHover": "#0077ed",
     "labelDisabled": "#838b97",
     "surfacePrimaryLight": "#f7f7f9",
     "surfaceElevatedLight": "#e9e9ed",
@@ -44,22 +44,29 @@ export const DESIGN = {
     "focusLight": "#0057b8"
   },
   "motion": {
-    "micro": 100,
+    "micro": 90,
     "response": 160,
-    "secondaryDelay": 125,
+    "secondaryDelay": 75,
     "expand": 210,
     "collapse": 160,
     "event": 210,
     "expandMode": "EASE_OUT_QUART",
     "collapseMode": "EASE_OUT_CUBIC",
-    "primaryDelay": 80,
-    "primaryDuration": 100,
-    "secondaryDuration": 110
+    "primaryDelay": 50,
+    "primaryDuration": 160,
+    "secondaryDuration": 155,
+    "contentShift": 3,
+    "curve": [
+      0.2,
+      0.8,
+      0.2,
+      1
+    ]
   },
   "control": {
     "icon": 15,
     "size": 28,
-    "compactHeight": 58
+    "compactHeight": 34
   },
   "shadow": {
     "surface": "none"
@@ -78,15 +85,12 @@ export const DESIGN = {
     "archContext": 388,
     "matciExpanded": 368,
     "neckWidth": 104,
-    "neckHeight": 10,
-    "shoulderDepth": 22,
-    "compactShoulder": 28
+    "earMin": 6,
+    "earMax": 14,
+    "seedHeight": 6
   },
   "material": {
-    "blurRadius": 28,
-    "blurBrightness": 0.73,
-    "tintAlpha": 0.82,
-    "highlightAlpha": 0.05,
-    "blurInset": 8
+    "keyLineAlpha": 0.07,
+    "lift": 0.03
   }
 };
