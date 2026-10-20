@@ -42,9 +42,14 @@ class FootballDataTests(unittest.TestCase):
 
     def test_windows_are_seven_days_and_cover_schedule_and_recent_results(self):
         windows = date_windows(NOW.date())
-        self.assertEqual(windows[0][0], NOW.date() - timedelta(days=28))
-        self.assertEqual(windows[-1][1], NOW.date() + timedelta(days=28))
-        self.assertTrue(all((end - start).days < 7 for start, end in windows))
+        self.assertLessEqual(windows[0][0], NOW.date() - timedelta(days=28))
+        self.assertGreaterEqual(windows[-1][1], NOW.date() + timedelta(days=28))
+        self.assertEqual(len(windows), 9)
+        self.assertTrue(all((end - start).days == 6 for start, end in windows))
+        self.assertEqual(windows[0][0].weekday(), 0)
+        self.assertEqual(windows[-1][1].weekday(), 6)
+        self.assertEqual(date_windows(NOW.date() + timedelta(days=1)),
+                         date_windows(NOW.date() + timedelta(days=2)))
 
     def test_three_team_schedule_normalizes_and_caches_without_details(self):
         rows = [
@@ -94,15 +99,36 @@ class FootballDataTests(unittest.TestCase):
         self.assertEqual(len(schedule.matches), 1)
         self.assertGreater(calls, 1)
 
-    def test_sliding_windows_do_not_accumulate_cache_rows(self):
+    def test_week_aligned_windows_reuse_cache_keys_across_days(self):
+        def opener(request, **kwargs):
+            return Response(b'{"matches": []}')
+
         schedule = FootballDataSchedule({'football_data_key_file': str(self.key_file)}, self.store,
-                                        lambda request, **kwargs: Response(b'{"matches": []}'))
-        schedule.fetch_context(NOW)
-        later = NOW + timedelta(days=1)
+                                        opener)
+        base = NOW + timedelta(days=2)
+        schedule.fetch_context(base)
+        first_keys = {key for (key,) in self.store.db.execute(
+            "SELECT key FROM cache WHERE key LIKE 'football-data:%'")}
+        later = base + timedelta(days=1)
         schedule.fetch_context(later)
         keys = {key for (key,) in self.store.db.execute("SELECT key FROM cache WHERE key LIKE 'football-data:%'")}
+        self.assertEqual(first_keys, keys)
         self.assertEqual(keys, {f'football-data:{start.isoformat()}:{end.isoformat()}'
                                 for start, end in date_windows(later.date())})
+
+    def test_failed_refresh_does_not_prune_schedule_cache(self):
+        stale_key = 'football-data:old-window'
+        self.store.cache_set(stale_key, {'at': 0, 'matches': []})
+
+        def fail(*_args, **_kwargs):
+            from urllib.error import URLError
+            raise URLError('offline')
+
+        schedule = FootballDataSchedule({'football_data_key_file': str(self.key_file)},
+                                        self.store, fail)
+        schedule.fetch_context(NOW)
+        self.assertEqual(self.store.cache_get(stale_key), {'at': 0, 'matches': []})
+        self.assertTrue(schedule.warning)
 
     def test_team_aliases_and_provider_neutral_fixture_match(self):
         self.assertEqual(canonical_team('FC Barcelona'), 'barcelona')

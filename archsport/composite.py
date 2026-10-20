@@ -64,11 +64,13 @@ class CompositeProvider:
             self.context['live_notice'] = ''
             self.warning = self._schedule_warning
             if self._schedule_warning or not self._scheduled:
-                self.next_poll_seconds = SCHEDULE_OUTAGE_LIVE_POLL_SECONDS
+                self.next_poll_seconds = (120 if self._schedule_warning and not self._scheduled
+                                          else SCHEDULE_OUTAGE_LIVE_POLL_SECONDS)
             return []
         schedule_outage = bool(self._schedule_warning or not self._scheduled)
-        self.next_poll_seconds = (SCHEDULE_OUTAGE_LIVE_POLL_SECONDS if schedule_outage
-                                  else self.live_poll_seconds)
+        self.next_poll_seconds = (120 if self._schedule_warning and not self._scheduled else
+                                  SCHEDULE_OUTAGE_LIVE_POLL_SECONDS if schedule_outage else
+                                  self.live_poll_seconds)
         if schedule_outage:
             self._last_schedule_outage_probe = now
         try:

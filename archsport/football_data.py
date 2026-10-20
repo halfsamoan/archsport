@@ -21,10 +21,14 @@ LOOKAHEAD_DAYS = 28
 def date_windows(today, lookback=LOOKBACK_DAYS, lookahead=LOOKAHEAD_DAYS):
     start = today - timedelta(days=lookback)
     end = today + timedelta(days=lookahead)
+    # Keep cache keys stable during a calendar week. football-data.org accepts
+    # an exclusive dateTo, so the caller adds one day for each inclusive week.
+    start -= timedelta(days=start.weekday())
+    end += timedelta(days=6 - end.weekday())
     result = []
     cursor = start
     while cursor <= end:
-        last = min(end, cursor + timedelta(days=WINDOW_DAYS - 1))
+        last = cursor + timedelta(days=WINDOW_DAYS - 1)
         result.append((cursor, last))
         cursor = last + timedelta(days=1)
     return result
@@ -126,6 +130,7 @@ class FootballDataSchedule:
         self.warning = ''
         seen = {}
         latest_cache_time = 0
+        fetch_failed = False
         windows = date_windows(now.astimezone(timezone.utc).date())
         for start, end in windows:
             cache_key = f'football-data:{start.isoformat()}:{end.isoformat()}'
@@ -140,6 +145,7 @@ class FootballDataSchedule:
                     self.store.cache_set(cache_key, {'at': now.timestamp(), 'matches': rows})
                     latest_cache_time = max(latest_cache_time, now.timestamp())
                 except ProviderError as exc:
+                    fetch_failed = True
                     if isinstance(cached, dict) and isinstance(cached.get('matches'), list):
                         rows = cached['matches']
                         self.warning = '일정 연결 오류 · 마지막 저장 일정을 표시합니다.'
@@ -152,9 +158,12 @@ class FootballDataSchedule:
                 source_id = str(row.get('id', ''))
                 if source_id:
                     seen[source_id] = row
-        # Window keys slide daily; rows outside today's windows are never read again.
-        self.store.cache_prune('football-data:', [f'football-data:{start.isoformat()}:{end.isoformat()}'
-                                                  for start, end in windows])
+        # A partial/failed refresh must not discard old rows that could still
+        # support the next outage fallback. Successful weekly windows remain
+        # on disk for the rest of the week and are pruned after a full refresh.
+        if not fetch_failed:
+            self.store.cache_prune('football-data:', [f'football-data:{start.isoformat()}:{end.isoformat()}'
+                                                      for start, end in windows])
 
         normalized = []
         for row in seen.values():

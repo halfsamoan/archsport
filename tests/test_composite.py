@@ -133,6 +133,7 @@ class CompositeProviderTests(unittest.TestCase):
         self.api_key.write_text('test-api-key', encoding='utf-8')
         provider = CompositeProvider(self.config(), self.store)
         provider._schedule_warning = 'football-data.org 일정 연결 오류'
+        provider._scheduled = []
         calls = []
 
         class Live:
@@ -144,7 +145,7 @@ class CompositeProviderTests(unittest.TestCase):
         provider.live = Live()
         self.assertEqual(provider.fetch(NOW), [])
         self.assertEqual(len(calls), 1)
-        self.assertEqual(provider.next_poll_seconds, 30 * 60)
+        self.assertEqual(provider.next_poll_seconds, 120)
 
         self.assertEqual(provider.fetch(NOW + timedelta(minutes=5)), [])
         self.assertEqual(len(calls), 1)
