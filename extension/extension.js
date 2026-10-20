@@ -20,6 +20,14 @@ const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', '
 const STATUS = {live: '진행 중', halftime: 'HT', finished: 'FT', scheduled: '경기 전',
     extra_time: '연장', penalties: '승부차기', postponed: '연기', cancelled: '취소',
     interrupted: '중단', abandoned: '중단 종료', unknown: '상태 미확인'};
+const firstFocusable = actor => {
+    for (const child of actor.get_children()) {
+        if (child.can_focus && child.reactive) return child;
+        const nested = firstFocusable(child);
+        if (nested) return nested;
+    }
+    return null;
+};
 
 export default class Archsport extends Extension {
     enable() {
@@ -48,6 +56,8 @@ export default class Archsport extends Extension {
         this._root = new St.BoxLayout({vertical: true, style_class: 'archsport-notch',
             reactive: false, can_focus: true,
             accessible_name: 'Archsport 경기 노치', clip_to_allocation: true});
+        // St.FocusManager uses this group to include notch controls in keyboard traversal.
+        global.focus_manager.add_group(this._root);
         const openDashboard = () => {
             if (!this._dock.claim(100)) return;
             this._returnWindow = global.display.get_focus_window();
@@ -386,6 +396,7 @@ export default class Archsport extends Extension {
 
     _render(afterCollapse = false) {
         if (!this._enabled || this._shellEnding) return;
+        const focusWasInside = isActorWithin(global.stage.get_key_focus(), this._root);
         if (this._timer) { GLib.source_remove(this._timer); this._timer = 0; }
         const now = GLib.get_monotonic_time() / 1000;
         const spoiler = this._settings.get_boolean('spoiler');
@@ -718,6 +729,7 @@ export default class Archsport extends Extension {
         }
         this._renderedExpanded = expanded;
         this._root.accessible_name = `Archsport. ${match?.home ?? '축구'} ${score} ${match?.away ?? ''}. ${clock}`;
+        if (expanded && focusWasInside) firstFocusable(this._root)?.grab_key_focus();
         if (alert) this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(1, Math.round(this._alertDeadline - now)), () => {
             this._timer = 0; this._activeAlert = null; this._alertAnimate = false; this._render(); this._showPendingAlert();
             return GLib.SOURCE_REMOVE;

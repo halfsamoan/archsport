@@ -289,3 +289,11 @@ test('overview and hidden fullscreen collapse Archsport unless an alert is activ
     assert.match(source, /Main\.overview, 'showing', \(\) => this\._onOverviewShowing\(\)/);
     assert.match(source, /this\._dock\.claim\(this\._expanded \? 100 : 80\)/);
 });
+
+test('keyboard focus stays in the notch after render rebuilds its controls', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /global\.focus_manager\.add_group\(this\._root\)/);
+    assert.match(source, /const focusWasInside = isActorWithin\(global\.stage\.get_key_focus\(\), this\._root\);/);
+    assert.match(source, /if \(expanded && focusWasInside\) firstFocusable\(this\._root\)\?\.grab_key_focus\(\)/);
+    assert.match(source, /const firstFocusable = actor => \{[\s\S]*?child\.can_focus && child\.reactive/);
+});
