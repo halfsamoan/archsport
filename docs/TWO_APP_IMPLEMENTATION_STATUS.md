@@ -9,7 +9,7 @@
 |---|---|---|
 | 역할 | Barcelona·Lazio·Como 축구 일정, 경기 중 점수·이벤트, 노치 알림 | 시스템 RAM·앱 메모리 관찰, 사용자가 고른 앱 창의 정상 닫기 요청 |
 | 구조 | GNOME Shell 확장 + Python worker + football-data.org 일정 + API-Football 라이브 | GNOME Shell 확장 + Python `/proc` worker + UID 범위 SQLite 기록 |
-| 소스 버전 | 13 | 10 |
+| 소스 버전 | `extension/metadata.json` 참조 | `extension/metadata.json` 참조 |
 | 현재 GNOME 상태(2026-10-19 확인) | 설치/GJS v11 ACTIVE; workspace v13은 GitHub 반영 후 새 UI 적용 검수 대기 | 설치/GJS v8 ACTIVE; workspace v10은 GitHub 반영 후 새 UI 적용 검수 대기 |
 | 자동 검증 | Python 65/65, Node 12/12, ESLint 0 errors, strict schema 통과 | Python 51/51, Node 27/27, ESLint 0 errors, strict schema 통과 |
 | 실기 범위 | football-data 일정 3개·최근 결과 5개, API-Football 라이브 경기 1개 수신 확인; v11 worker 실행 확인. 새 버전의 화면 모양·실제 알림은 시각 검수 전 | 현재 Ubuntu `/proc` smoke 통과; 실제 GUI 창 닫기와 두 노치 배치는 미검증 |
@@ -86,7 +86,7 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 ### 노치 화면·상호작용
 
 - Archsport 접힌 상태는 클럽 문장/이름, 스코어와 분·상태를 한 줄로 보여준다. 펼친 상태는 경기 카드, 다음 경기, 최근 결과와 이벤트를 표시하며 일정은 달력 아이콘, 최근 결과는 기록 아이콘, 설정·접기는 접근성 이름이 있는 아이콘 버튼으로 제공한다.
-- 경기 상태가 없으면 노치를 숨기고 진행 중인 경기 또는 일회성 알림에서만 나타난다. 화면 너비에 따라 280px compact / 최대 520px expanded로 제한하고, 280ms cubic ease 크기 전환을 사용한다. overview, 잠금, 설정된 전체화면, 절전 때는 숨긴다.
+- 경기 상태가 없으면 노치를 숨기고 진행 중인 경기 또는 일회성 알림에서만 나타난다. compact/expanded 너비와 모션 값은 `extension/metadata.json` 및 `docs/design/design-tokens.json`을 따른다. overview, 잠금, 설정된 전체화면, 절전 때는 숨긴다.
 - 매치 이벤트는 득점 아이콘/상태와 짧은 자동 접힘으로 표시한다. spoiler 설정 시 점수·자동 확장 알림을 감춘다. data error는 offline 아이콘/문구로 구분한다. spoiler 옵션은 후속 제품 정리 작업에서 제거 예정이다.
 - 수동 펼침 중 matci가 우선권을 가지면 스포츠 알림은 재시도 대기한다. 대기 알림은 `XDG_STATE_HOME/archsport/pending-alerts.json`에 저장하고, 최초 대기 시각 기준 2시간 이내이며 현재 payload의 경기 ID·킥오프가 일치하는 항목만 복원한다. 다른 노치·overview·fullscreen이 표시를 막는 동안에도 만료하며, 실제 GNOME Shell 재시작 후 표시 여부는 아직 기기에서 확인하지 않았다.
 
@@ -146,7 +146,7 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 ### 노치 화면·상호작용
 
 - 패널에는 RAM 사용률을 상시 짧게 표시하고 클릭하면 세부 화면을 연다. 확장 화면은 정상 관측 시 작은 상태 점과 `정상`, 그 외에는 `시연`·`연결 오류`·`연결 중` 상태를 표시한다. 사용률·가용/전체 메모리, 사용량 막대, 앱별 창 수·메모리 metric·관측 나이·마지막 입력 나이도 표시한다.
-- 앱 아이콘과 체크/보호 아이콘, 설정·접기·새로고침 버튼을 사용하고 키보드 접근성 이름을 제공한다. 목록이 길면 내부 스크롤한다. 화면 폭 최대 500px, 높이 최대 350px이며 확장 geometry는 GNOME 모션 설정을 따라 280ms cubic ease다.
+- 앱 아이콘과 체크/보호 아이콘, 설정·접기·새로고침 버튼을 사용하고 키보드 접근성 이름을 제공한다. 목록이 길면 내부 스크롤한다. 화면 크기 제한과 확장 모션 값은 `docs/design/design-tokens.json`을 따른다.
 - RAM 사용 제안은 opt-in이다. 임계치 이상 30초 유지 후 쿨다운을 지키고, 사용자가 펼쳐둔 상태에는 자동으로 열지 않는다. 앱 종료 대신 닫기 검토/확정 흐름으로 이어진다.
 - 노치 UI는 코드/단위 테스트에는 있지만 실제 GNOME 창 매핑, 클릭·애니메이션, 설정창 영향은 실기 검수 전이다.
 
@@ -178,7 +178,7 @@ GJS는 화면·설정·수명주기를 담당한다. 네트워크 요청과 `/pr
 ## 공유 노치 동작
 
 - 양 확장은 서로 다른 Python worker와 저장소를 유지한다. GNOME Shell `Main.layoutManager`에 버전이 붙은 작은 registry 하나를 두어 actor의 화면 위치와 현재 조작 권한만 공유한다.
-- 노치는 상단 패널 아래 `addChrome(..., {affectsStruts:false})`로 배치한다. registry는 두 노치를 가운데에 8 logical px 간격으로 두고, 화면이 좁아지면 수동으로 연 화면을 우선하고 나머지를 숨기는 정책을 계산한다.
+- 노치는 상단 패널 아래 `addChrome(..., {affectsStruts:false})`로 배치한다. registry는 두 노치를 가운데에 두고, slab의 귀가 겹치지 않도록 간격을 `2 × earMax`(`docs/design/design-tokens.json`)로 계산한다. 화면이 좁아지면 수동으로 연 화면을 우선하고 나머지를 숨기는 정책을 계산한다.
 - matci는 사용자가 상세 화면을 열 때 우선순위 100, Archsport 경기 알림은 80이다. Archsport는 우선순위를 빼앗지 않고 메모리 검토가 끝날 때까지 알림을 대기시킨다. 유효한 sports 대기 알림은 사용자 상태 디렉터리에 저장되며 fixture 문맥이 일치하지 않으면 복원하지 않는다.
 - 자동 geometry·priority는 Node 단위 검사로 확인했다. 하지만 GNOME 50 실 화면에서 클릭 hit-test, 패널 메뉴, 125/150% 배율, 전체화면, 좁은 창 충돌은 검수되지 않았다. 스크린샷은 디자인 참고 근거지 새 버전의 실행 증거가 아니다.
 

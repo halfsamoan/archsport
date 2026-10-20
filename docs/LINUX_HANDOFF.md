@@ -186,7 +186,7 @@ http://127.0.0.1:4173 에서 디자인을 확인한다. Windows에 있던 서버
 | P0-08 | 전체화면/overview/잠금 | 설정대로 숨김, 복귀 시 중복 actor 없음 | 미검증 |
 | P0-09 | worker 강제 종료 | 5초부터 재시도, 중복 프로세스·이전 callback 없음 | 미검증 |
 | P0-10 | FT 이후 | 5분 후 해당 경기 반복 요청 종료, 다음 일정 저빈도 전환 | 미검증 |
-| P0-11 | matci 동시 활성 | 중앙 그룹·8 logical px 간격·수동 우선순위·좁은 폭 fallback·패널 클릭 유지 | 미검증 |
+| P0-11 | matci 동시 활성 | 중앙 그룹·두 slab의 귀가 겹치지 않음(간격 = 2 × `earMax`, `docs/design/design-tokens.json`)·수동 우선순위·좁은 폭 fallback·패널 클릭 유지 | 미검증 |
 
 진단 예:
 
