@@ -14,6 +14,7 @@
     <key name="spoiler" type="b"><default>false</default><summary>Hide scores and events</summary></key>
     <key name="event-seconds" type="i"><range min="2" max="30"/><default>6</default><summary>Event display seconds</summary></key>
     <key name="monitor-index" type="i"><range min="-1" max="15"/><default>-1</default><summary>-1 primary monitor</summary></key>
+    <key name="archsport-toggle-shortcut" type="as"><default>['KP_Enter']</default><summary>Shortcut that opens or closes the notch</summary></key>
     <key name="key-revision" type="i"><default>0</default><summary>Restart after private key file changes</summary></key>
   </schema>
 </schemalist>

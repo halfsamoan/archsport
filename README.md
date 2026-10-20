@@ -30,6 +30,8 @@ gnome-extensions prefs archsport@local
 
 무료 API-Football 기본 할당량은 계정·요금제 정책에 따라 달라질 수 있다. Archsport 기본 요청 상한은 90회/일이며 경기 감시를 위한 간격은 최소 5분이다. 사용 전에 [공식 요금표](https://www.api-football.com/pricing)를 확인한다.
 
+넘버패드 `Enter`로 노치를 열고 닫는다. Shell이 이 키를 가로채므로 일반 데스크톱에서는 앱에 전달되지 않는다. 바꾸려면 `gsettings --schemadir ~/.local/share/gnome-shell/extensions/archsport@local/schemas set org.gnome.shell.extensions.archsport archsport-toggle-shortcut "['<Super>a']"`처럼 지정한다.
+
 ## 업데이트
 
 ```bash

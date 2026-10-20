@@ -193,3 +193,11 @@ test('blur inset and hit-region margins survive St style resets', async () => {
     // The Cairo Bézier corner reaches 0.3125 × radius inward at its diagonal midpoint.
     assert.ok(DESIGN.material.blurInset >= 0.3125 * DESIGN.radius.surface);
 });
+
+test('numpad toggle shortcut is bound on enable and released on disable', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    const schema = readFileSync(new URL('../extension/schemas/org.gnome.shell.extensions.archsport.gschema.xml', import.meta.url), 'utf8');
+    assert.match(source, /addKeybinding\('archsport-toggle-shortcut'/);
+    assert.match(source, /disable\(\) \{\n\s+this\._enabled = false;\n\s+Main\.wm\.removeKeybinding\('archsport-toggle-shortcut'\);/);
+    assert.ok(schema.includes(`<key name="archsport-toggle-shortcut" type="as"><default>['KP_Enter']</default>`));
+});
