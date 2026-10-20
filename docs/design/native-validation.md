@@ -204,3 +204,9 @@ After unlock and the staged update applies at the next GNOME login, capture and 
 | idle panel, compact live, expanded live, goal event, schedule, multiple games, error | panel, overview, app list, selected apps, review, result, error |
 
 Then validate 100/125/150% scaling, input including right/middle/side clicks, repeated open/close, cross-app ownership, overview/fullscreen, suspend/resume, lifecycle and 30-minute CPU/GPU/RSS before producing `final-apple-audit.png`. The worker/API paths must remain unchanged. Inspect relevant redacted `journalctl --user -b -o short-precise` errors after the actual run.
+
+## 2026-10-20 Reliability/accessibility integration (Archsport v23 / matci v20)
+
+Source validation on the integration worktrees passed: Archsport Python 80/80 and Node 33/33; matci Python 79/79 and Node 44/44; ESLint `--max-warnings 0` reported no warnings in either repository. Design generation/checks passed and the shared design files matched byte-for-byte.
+
+No isolated GNOME Shell scenario, real-device measurement, staging/install, or relogin check was run for these versions. The handoff document's §1 prohibits those shell/device/staging actions in this task. Existing screenshots and measurements above describe earlier versions only and do not validate v23/v20. C1/C2/C7/C8/C9/C11 input, accessibility, lifecycle and resource behavior remain pending their permitted native review.
