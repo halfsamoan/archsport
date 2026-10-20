@@ -71,7 +71,7 @@ class Worker:
                 previous_interval = min(600, int(self.last_interval or self._poll_window_seconds()))
                 max_gap = max(120, 2 * previous_interval + 60)
                 alert = self.store.ingest(match, now.timestamp(), suppress=self.first,
-                                          max_gap_seconds=max_gap)
+                                          max_gap_seconds=max_gap, catchup=self.first)
                 active.append((match, alert))
             # The error path only reuses a snapshot younger than stale_after; drop older ones.
             cutoff = now.timestamp() - self._stale_after_seconds()

@@ -65,6 +65,29 @@ class EngineTests(unittest.TestCase):
             self.assertIsNone(second.ingest(match(2), 60))
             second.close()
 
+    def test_catchup_includes_normal_penalty_and_own_goals(self):
+        for index, detail in enumerate(('Normal Goal', 'Penalty', 'Own Goal')):
+            with self.subTest(detail=detail):
+                previous = {'id': f'goal-{index}', 'home': 'Barcelona', 'away': 'Sevilla',
+                            'home_score': 0, 'away_score': 0, 'status': 'live', 'elapsed': 1}
+                current = {**previous, 'home_score': 1, 'elapsed': 20,
+                           'events': [{'kind': 'Goal', 'detail': detail, 'elapsed': 18,
+                                       'player': 'Scorer', 'team': 'Barcelona'}]}
+                self.store.ingest(previous, index * 1000)
+                alert = self.store.ingest(current, index * 1000 + 300,
+                                          suppress=True, catchup=True)
+                self.assertEqual(alert['kind'], 'score')
+
+    def test_catchup_first_half_age_includes_halftime(self):
+        previous = {'id': 'halftime-goal', 'home': 'Barcelona', 'away': 'Sevilla',
+                    'home_score': 0, 'away_score': 0, 'status': 'live', 'elapsed': 1}
+        current = {**previous, 'home_score': 1, 'elapsed': 50,
+                   'events': [{'kind': 'Goal', 'detail': 'Normal Goal', 'elapsed': 45,
+                               'player': 'Scorer', 'team': 'Barcelona'}]}
+        self.store.ingest(previous, 0)
+        self.assertIsNone(self.store.ingest(current, 15 * 60,
+                                            suppress=True, catchup=True))
+
 
 if __name__ == '__main__':
     unittest.main()

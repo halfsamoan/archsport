@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
-from archsport.engine import Store
+from archsport.engine import Store, _score_events
 from archsport.provider import ApiFootball, ProviderError, normalize
 from archsport.scheduler import match_visible, poll_interval
 from archsport.service import Worker
@@ -335,13 +335,87 @@ class ServiceTests(unittest.TestCase):
         payload = worker.poll(NOW + timedelta(minutes=1))
         self.assertEqual(payload['next_poll_seconds'], 6 * 60 * 60)
 
-    def test_new_process_suppresses_catchup_and_restores_cache_on_error(self):
+    def goal(self, minute=None, team='Barcelona', player='Test Scorer', detail='Normal Goal'):
+        return {'kind': 'Goal', 'detail': detail, 'elapsed': minute, 'extra': None,
+                'player': player, 'team': team}
+
+    def seed_snapshot(self, home=0, away=0, status='live'):
+        self.current.update(home_score=home, away_score=away, status=status,
+                            elapsed=1, events=[])
         self.worker().poll(NOW)
-        self.current['home_score'] = 1
-        self.assertIsNone(self.worker().poll(NOW + timedelta(seconds=20))['alert'])
+
+    def test_restart_alerts_latest_goal_within_10min(self):
+        self.seed_snapshot()
+        self.current.update(home_score=1, elapsed=16,
+                            events=[self.goal(12, player='Yamal')])
+        payload = self.worker().poll(NOW + timedelta(minutes=4))
+        self.assertEqual(payload['alert']['kind'], 'score')
+        self.assertEqual(payload['match']['home_score'], 1)
+        self.assertTrue(payload['alert']['fingerprint'].startswith('goal:'))
+
+    def test_restart_two_goals_alerts_only_latest(self):
+        self.seed_snapshot()
+        older, latest = self.goal(50, player='Lewandowski'), self.goal(55, player='Yamal')
+        self.current.update(home_score=2, elapsed=60, events=[older, latest])
+        payload = self.worker().poll(NOW + timedelta(minutes=15))
+        self.assertEqual(payload['alert']['kind'], 'score')
+        expected = self.store.db.execute(
+            "SELECT COUNT(*) FROM receipts WHERE match_id=? AND fingerprint LIKE 'goal:%'",
+            (self.current['id'],)).fetchone()[0]
+        self.assertEqual(expected, 2)
+        latest_goal = _score_events(self.current)['home'][-1]['fingerprint']
+        self.assertEqual(payload['alert']['fingerprint'], latest_goal)
+
+    def test_restart_goal_older_than_10min_updates_score_only(self):
+        self.seed_snapshot()
+        self.current.update(home_score=1, elapsed=70, events=[self.goal(40)])
+        payload = self.worker().poll(NOW + timedelta(minutes=30))
+        self.assertIsNone(payload['alert'])
+        saved = self.store.db.execute('SELECT payload FROM snapshots WHERE match_id=?',
+                                      (self.current['id'],)).fetchone()
+        self.assertEqual(json.loads(saved[0])['home_score'], 1)
+
+    def test_restart_does_not_repeat_alerted_goal(self):
+        self.seed_snapshot()
+        self.current.update(home_score=1, elapsed=16, events=[self.goal(12)])
+        already_alerted = _score_events(self.current)['home'][0]['fingerprint']
+        self.assertTrue(self.store.insert_receipt(self.current['id'], already_alerted))
+        self.assertIsNone(self.worker().poll(NOW + timedelta(minutes=5))['alert'])
+
+    def test_normal_score_alert_records_goal_receipt(self):
+        worker = self.worker()
+        worker.poll(NOW)
+        self.current.update(home_score=1, elapsed=16, events=[self.goal(12)])
+        alert = worker.poll(NOW + timedelta(minutes=5))['alert']
+        self.assertEqual(alert['kind'], 'score')
+        self.assertTrue(self.store.has_receipt(self.current['id'], alert['fingerprint']))
+
+    def test_restart_without_stored_state_suppresses(self):
+        self.current.update(home_score=1, elapsed=20, events=[self.goal(18)])
+        self.assertIsNone(self.worker().poll(NOW + timedelta(minutes=2))['alert'])
+
+    def test_restart_ht_ft_only_no_alert(self):
+        self.seed_snapshot()
+        self.current.update(status='halftime', elapsed=45)
+        self.assertIsNone(self.worker().poll(NOW + timedelta(minutes=5))['alert'])
+        self.current.update(status='finished', elapsed=90)
+        self.assertIsNone(self.worker().poll(NOW + timedelta(minutes=6))['alert'])
+
+    def test_restart_var_rollback_no_alert(self):
+        self.seed_snapshot(home=1)
+        self.current.update(home_score=0, elapsed=30, events=[])
+        self.assertIsNone(self.worker().poll(NOW + timedelta(minutes=3))['alert'])
+
+    def test_restart_goal_without_minute_after_long_gap_no_alert(self):
+        self.seed_snapshot()
+        self.current.update(home_score=1, elapsed=30, events=[self.goal(None)])
+        self.assertIsNone(self.worker().poll(NOW + timedelta(minutes=20))['alert'])
+
+    def test_provider_error_keeps_last_match_visible(self):
+        self.worker().poll(NOW)
         self.current = ProviderError('offline')
         payload = self.worker().poll(NOW + timedelta(seconds=30))
-        self.assertEqual(payload['match']['home_score'], 1)
+        self.assertEqual(payload['match']['home_score'], 0)
         self.assertEqual(payload['health'], 'error')
 
     def test_finished_live_snapshots_do_not_accumulate_in_memory(self):
