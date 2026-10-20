@@ -1,16 +1,17 @@
 .archsport-notch {
     font-family: '{{typography.family}}';
-    background-color: {{color.surfacePrimary}};
+    background-color: transparent;
     color: {{color.labelPrimary}};
-    border-radius: 0 0 {{radius.surface}}px {{radius.surface}}px;
-    padding: {{spacing.xs}}px {{spacing.md}}px;
+    border-radius: 0;
+    padding: 18px {{spacing.md}}px 4px;
     spacing: {{spacing.sm}}px;
-    box-shadow: inset 0 -1px 0 {{color.separatorSubtle}};
+    box-shadow: none;
 }
+.shared-notch-blur { background-color: rgba(9, 10, 12, 0.03); }
 .archsport-notch StLabel, .archsport-notch StButton { font-family: '{{typography.family}}'; }
-.archsport-notch.archsport-open { padding: {{spacing.sm}}px {{spacing.lg}}px {{spacing.md}}px; spacing: {{spacing.sm}}px; }
-.archsport-compact { spacing: {{spacing.xs}}px; min-height: 34px; }
-.archsport-compact-button { height: 34px; padding: 0 6px; border-radius: 17px; background-color: transparent; }
+.archsport-notch.archsport-open { padding: 35px {{spacing.lg}}px {{spacing.md}}px; spacing: {{spacing.sm}}px; }
+.archsport-compact { spacing: {{spacing.xs}}px; min-height: 30px; }
+.archsport-compact-button { height: 30px; padding: 0 6px; border-radius: 15px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: {{color.separatorSubtle}}; }
 .archsport-compact-button:active { background-color: {{color.pressedWash}}; }
 .archsport-compact-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
@@ -41,12 +42,14 @@
 .archsport-context-row { min-height: 30px; padding: 2px 0; }
 .archsport-context-row StIcon { color: {{color.labelTertiary}}; }
 .archsport-context-text { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; }
+.archsport-watch-name { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
 .archsport-section-title { min-height: 24px; color: {{color.labelTertiary}}; }
 .archsport-section-title StIcon { color: {{color.labelTertiary}}; }
 .archsport-count { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
 .archsport-empty { min-height: 36px; spacing: {{spacing.sm}}px; color: {{color.labelTertiary}}; }
 .archsport-empty StIcon { color: {{color.focus}}; }
-.archsport-date { min-width: 58px; color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
+.archsport-date { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
+.archsport-result-score { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; font-weight: 600; }
 .archsport-fixture-row { min-height: 22px; spacing: 8px; }
 .archsport-stats { min-height: 28px; spacing: {{spacing.md}}px; }
 .archsport-stat { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; }

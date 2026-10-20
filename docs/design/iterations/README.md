@@ -1,5 +1,25 @@
 # GNOME 50.1 네이티브 시각 반복 · 2026-10-19
 
+## 2026-10-20 v18 실루엣 후보
+
+격리된 GNOME Shell 50.1의 1600×900 가상 모니터에서 **임시 개발 복사본**에
+합성 경기 상태를 넣고 `Shell.Screenshot.screenshot_area()`로 촬영했다.
+실제 사용자 세션에 적용된 화면이나 실제 경기 기록이 아니다.
+
+| 상태 | 실제 GJS 렌더 캡처 |
+| --- | --- |
+| 일정 | [11-v18-schedule.png](11-v18-schedule.png) |
+| 라이브 | [12-v18-live.png](12-v18-live.png) |
+| compact | [13-v18-compact.png](13-v18-compact.png) |
+| 펼침 요청 후 75/130/230ms | [14-v18-morph-75ms.png](14-v18-morph-75ms.png), [15-v18-morph-130ms.png](15-v18-morph-130ms.png), [16-v18-morph-230ms.png](16-v18-morph-230ms.png) |
+
+모션 사진의 시각은 GLib 타이머 요청 시각이며 실제 프레임 캡처 완료 시각이
+아니다. 해당 실행에서는 compact→일정 전환의 요청 시각 20/75/130/230ms에
+surface 크기가 각각 약 218×65, 232×73, 256×111, 388×322였다.
+본문 텍스트는 작은 surface allocation 밖으로 나오지 않았다. 보이는 블러
+영역을 본문 내부에 두었고 곡선 바깥의 직사각형 번짐은 캡처에서 보이지
+않았다. 실제 사용자 화면의 배율·입력·성능은 별도로 검수해야 한다.
+
 ## 2026-10-20 Pretendard와 상단 앵커 등장 모션
 
 현 기기의 `fc-match Pretendard`는 사용자 설치 Pretendard 1.3.9를 찾는다.

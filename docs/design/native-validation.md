@@ -1,5 +1,20 @@
 # Native GNOME validation log
 
+## 2026-10-20 목·어깨·본문 후보 (Archsport v18 / matci v15)
+
+기존 미커밋 v17/v14를 먼저 기준 커밋으로 보존했다. GNOME 50.1의 실제
+GI typelib을 조회해 `Shell.BlurEffect`에 `radius`, `brightness`, `mode`가
+있고 `Shell.BlurMode.BACKGROUND`가 사용 가능함을 확인했다. 두 확장의
+새 표면은 Cairo로 검은 실루엣과 내부 하이라이트를 그리며, 별도 blur actor는
+본문 안쪽에만 놓는다. Cairo 영역을 블러의 마스크로 사용하지 않는다.
+
+격리된 `GSETTINGS_BACKEND=keyfile` Shell에서 임시 개발 복사본의 합성
+Archsport 3상태·matci 3상태를 촬영했다. [Archsport 캡처](iterations/README.md),
+[matci 캡처](../../../matci/docs/design/iterations/README.md)를 참조한다.
+최종 형태의 상단 투명 모서리는 `MetaBackgroundActor`, 목·어깨는 반응형
+노치 actor로 pick된 것을 확인했다. 이 검사는 실제 마우스 클릭·키보드·배율
+검증을 대신하지 않는다. 실제 사용자 Shell은 아직 v16/v13 ACTIVE다.
+
 ## 2026-10-20 Pretendard / reveal candidate (v17/v14)
 
 재로그인 후 실제 사용자 Shell은 Archsport v16, matci v13을 ACTIVE로

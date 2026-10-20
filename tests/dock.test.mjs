@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
+import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape,
     classifyOutsideSurface, dispatchOutsideDismiss} from '../extension/dockModel.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary} from '../extension/uiModel.js';
 
@@ -24,7 +24,7 @@ test('event summary stays readable with extra time and missing provider fields',
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from '../extension/alertQueue.js';
 
 test('sport and memory notches share a centered row', () => {
-    assert.equal(DOCK_PROTOCOL, 4);
+    assert.equal(DOCK_PROTOCOL, 5);
     const [sport, memory] = layoutNotches([
         {id: 'archsport', width: 360, order: 0},
         {id: 'matci', width: 220, order: 1},
@@ -87,6 +87,15 @@ test('outside-click hit testing includes descendant controls and blank actor bou
     assert.equal(isPointWithinActor(root, 101, 21), true);
     assert.equal(isPointWithinActor(root, 500, 100), true);
     assert.equal(isPointWithinActor(root, 501, 100), false);
+});
+
+test('transparent shoulder corners are outside while neck and body accept input', () => {
+    assert.equal(pointInNotchShape(4, 4, 388, 250), false);
+    assert.equal(pointInNotchShape(194, 4, 388, 250), true);
+    assert.equal(pointInNotchShape(35, 26, 388, 250), false);
+    assert.equal(pointInNotchShape(190, 26, 388, 250), true);
+    assert.equal(pointInNotchShape(190, 220, 388, 250), true);
+    assert.equal(pointInNotchShape(0, 250, 388, 250), false);
 });
 
 test('only the active notch trigger is exempt from outside dismissal', () => {

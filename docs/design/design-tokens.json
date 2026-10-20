@@ -9,11 +9,11 @@
     "between": 20
   },
   "radius": {
-    "surface": 24,
+    "surface": 22,
     "control": 12
   },
   "color": {
-    "surfacePrimary": "rgba(9, 10, 12, 0.97)",
+    "surfacePrimary": "rgba(9, 10, 12, 0.82)",
     "surfaceElevated": "#23252a",
     "labelPrimary": "#f5f5f7",
     "labelSecondary": "#b5b7be",
@@ -45,17 +45,20 @@
   "motion": {
     "micro": 100,
     "response": 160,
-    "secondaryDelay": 65,
-    "expand": 220,
+    "secondaryDelay": 125,
+    "expand": 210,
     "collapse": 160,
     "event": 210,
     "expandMode": "EASE_OUT_QUART",
-    "collapseMode": "EASE_OUT_CUBIC"
+    "collapseMode": "EASE_OUT_CUBIC",
+    "primaryDelay": 80,
+    "primaryDuration": 100,
+    "secondaryDuration": 110
   },
   "control": {
     "icon": 15,
     "size": 28,
-    "compactHeight": 42
+    "compactHeight": 54
   },
   "shadow": {
     "surface": "none"
@@ -72,6 +75,17 @@
     "archCompact": 200,
     "archExpanded": 344,
     "archContext": 388,
-    "matciExpanded": 368
+    "matciExpanded": 368,
+    "neckWidth": 104,
+    "neckHeight": 10,
+    "shoulderDepth": 22,
+    "compactShoulder": 18
+  },
+  "material": {
+    "blurRadius": 28,
+    "blurBrightness": 0.73,
+    "tintAlpha": 0.82,
+    "highlightAlpha": 0.05,
+    "blurInset": 24
   }
 }

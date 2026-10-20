@@ -2,7 +2,7 @@ import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, classifyOutsideSurface,
+import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape, isPointWithinNotch, classifyOutsideSurface,
     shouldDismissOutside, dispatchOutsideDismiss} from './dockModel.js';
 import {DESIGN} from './designTokens.js';
 
@@ -16,10 +16,12 @@ function layoutSourceHash() {
     let hash = 2166136261;
     const contract = [`protocol=${DOCK_PROTOCOL}`, `open=${OPEN_MS}`, `close=${CLOSE_MS}`, `position=${POSITION_MS}`,
         disconnectCapture, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
+        pointInNotchShape, isPointWithinNotch,
         classifyOutsideSurface, shouldDismissOutside, dispatchOutsideDismiss,
-        eventCoordinates, buttonNumber, hideActor, showActor, insideActiveSurface, getDock, DockParticipant]
+        eventCoordinates, buttonNumber, clearMorph, queueStage, hideActor, showActor,
+        insideActiveSurface, getDock, DockParticipant]
         .map(fn => typeof fn === 'string' ? fn : fn.toString()).join('|');
-    for (const char of `${contract}|capture-dismiss-v4|motion-v5|${DESIGN.motion.expandMode}|${DESIGN.motion.collapseMode}`) {
+    for (const char of `${contract}|capture-dismiss-v5|morph-v6|${DESIGN.motion.expandMode}|${DESIGN.motion.collapseMode}`) {
         hash ^= char.charCodeAt(0);
         hash = Math.imul(hash, 16777619);
     }
@@ -46,12 +48,29 @@ function eventCoordinates(event) {
     }
 }
 
+function clearMorph(participant) {
+    for (const source of participant.morphSources) GLib.source_remove(source);
+    participant.morphSources = [];
+    participant.actor?.remove_all_transitions();
+}
+
+function queueStage(participant, delay, transitionId, callback) {
+    const source = GLib.timeout_add(GLib.PRIORITY_DEFAULT, delay, () => {
+        participant.morphSources = participant.morphSources.filter(id => id !== source);
+        if (!participant.disposed && participant.transitionId === transitionId) callback();
+        return GLib.SOURCE_REMOVE;
+    });
+    participant.morphSources.push(source);
+}
+
 function hideActor(dock, participant, animate = true) {
     const actor = participant.actor;
     if (!actor || participant.disposed) return;
     if (participant.closing && animate) return;
+    clearMorph(participant);
     participant.transitionId++;
     participant.closing = false;
+    participant.targetGeometry = null;
     const transitionId = participant.transitionId;
     let duration = 0;
     try {
@@ -61,7 +80,6 @@ function hideActor(dock, participant, animate = true) {
     }
     if (!actor.visible || !duration) {
         try {
-            actor.remove_all_transitions();
             actor.visible = false;
             actor.opacity = 255;
         } catch (_error) { /* Shell owns final actor disposal */ }
@@ -69,7 +87,9 @@ function hideActor(dock, participant, animate = true) {
     }
     participant.closing = true;
     try {
-        actor.ease({opacity: 0, duration,
+        const center = actor.x + actor.width / 2;
+        actor.ease({x: center - DESIGN.geometry.neckWidth / 2,
+            width: DESIGN.geometry.neckWidth, height: 8, duration,
             mode: Clutter.AnimationMode[DESIGN.motion.collapseMode],
             onComplete: () => {
                 if (dock.shuttingDown || participant.disposed || participant.transitionId !== transitionId)
@@ -90,10 +110,13 @@ function showActor(dock, participant, placement) {
     const actor = participant.actor;
     if (!actor || participant.disposed || dock.shuttingDown) return;
     const wasHidden = !actor.visible;
-    const reversingClose = participant.closing;
-    if (!wasHidden && !reversingClose) return;
+    const target = `${placement.x}:${placement.y}:${placement.width}:${placement.height}`;
+    if (!wasHidden && !participant.closing && participant.targetGeometry === target) return;
+    clearMorph(participant);
     participant.transitionId++;
     participant.closing = false;
+    participant.targetGeometry = target;
+    const transitionId = participant.transitionId;
     try {
         let duration = 0;
         try {
@@ -101,32 +124,41 @@ function showActor(dock, participant, placement) {
         } catch (_error) {
             duration = 0;
         }
+        const {width, height} = placement;
+        const center = placement.x + width / 2;
         if (wasHidden) {
-            const {width, height} = participant.state;
-            const target = `${placement.x}:${placement.y}`;
-            participant.targetPosition = target;
-            actor.remove_all_transitions();
-            if (duration) {
-                const revealWidth = Math.min(width, 104);
-                const revealHeight = Math.min(height, 8);
-                actor.set_position(placement.x + Math.round((width - revealWidth) / 2), placement.y);
-                actor.set_size(revealWidth, revealHeight);
-                actor.opacity = 255;
-                actor.visible = true;
-                actor.ease({x: placement.x, y: placement.y, width, height, duration,
-                    mode: Clutter.AnimationMode[DESIGN.motion.expandMode]});
-            } else {
-                actor.set_position(placement.x, placement.y);
-                actor.set_size(width, height);
-                actor.opacity = 255;
-                actor.visible = true;
-            }
-        } else if (duration && reversingClose) {
-            actor.ease({opacity: 255, duration: DESIGN.motion.response,
-                mode: Clutter.AnimationMode[DESIGN.motion.expandMode]});
-        } else {
-            actor.opacity = 255;
+            actor.set_position(center - DESIGN.geometry.neckWidth / 2, placement.y);
+            actor.set_size(DESIGN.geometry.neckWidth, 8);
+            actor.visible = true;
         }
+        actor.opacity = 255;
+        if (!duration) {
+            actor.set_position(placement.x, placement.y);
+            actor.set_size(width, height);
+            return;
+        }
+        if (!wasHidden && (height < actor.height || width < actor.width)) {
+            actor.ease({x: placement.x, y: placement.y, width, height,
+                duration: CLOSE_MS, mode: Clutter.AnimationMode[DESIGN.motion.collapseMode]});
+            return;
+        }
+        if (!wasHidden && Math.abs(height - actor.height) < 2 && Math.abs(width - actor.width) < 2) {
+            actor.ease({x: placement.x, y: placement.y, duration,
+                mode: Clutter.AnimationMode[DESIGN.motion.expandMode]});
+            return;
+        }
+        const middleWidth = Math.max(actor.width, Math.min(width, Math.round(width * 0.6)));
+        const middleHeight = Math.min(height, Math.max(actor.height + 20, 42));
+        if (wasHidden) actor.ease({x: center - (DESIGN.geometry.neckWidth + 8) / 2,
+            width: DESIGN.geometry.neckWidth + 8, height: 12,
+            duration: 45, mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+        queueStage(participant, wasHidden ? 25 : 0, transitionId, () =>
+            actor.ease({x: center - middleWidth / 2, y: placement.y,
+                width: middleWidth, height: middleHeight, duration: 95,
+                mode: Clutter.AnimationMode[DESIGN.motion.expandMode]}));
+        queueStage(participant, 70, transitionId, () =>
+            actor.ease({x: placement.x, y: placement.y, width, height, duration: 140,
+                mode: Clutter.AnimationMode.EASE_IN_OUT_CUBIC}));
     } catch (_error) {
         // A stale actor is left to Shell teardown; do not retry UI work during shutdown.
     }
@@ -197,18 +229,6 @@ function getDock() {
                         hideActor(this, participant, false);
                     } else {
                         showActor(this, participant, placement);
-                        const target = `${placement.x}:${placement.y}`;
-                        if (participant.targetPosition !== target) {
-                            participant.targetPosition = target;
-                            let duration = 0;
-                            try {
-                                if (participant.animations.get_boolean('enable-animations')) duration = POSITION_MS;
-                            } catch (_error) { duration = 0; }
-                            try {
-                                participant.actor.ease({x: placement.x, y: placement.y, duration,
-                                    mode: Clutter.AnimationMode[DESIGN.motion.expandMode]});
-                            } catch (_error) {}
-                        }
                     }
                     try { participant.onPlacement?.(placement); } catch (_error) {}
                 }
@@ -251,7 +271,8 @@ export class DockParticipant {
         this.onShellShutdown = onShellShutdown;
         this.triggerActor = triggerActor;
         this.animations = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
-        this.targetPosition = null;
+        this.targetGeometry = null;
+        this.morphSources = [];
         this.lastFallback = false;
         this.transitionId = 0;
         this.closing = false;
@@ -300,6 +321,7 @@ export class DockParticipant {
     destroy() {
         if (this.disposed) return;
         this.disposed = true;
+        clearMorph(this);
         const dock = this.dock;
         if (!dock) return;
         dock.participants.delete(this.id);
