@@ -74,3 +74,7 @@ python -m http.server 4173 --bind 127.0.0.1 --directory web
 | `replica/verification.md` | 수행한 검증과 아직 남은 실기 검사 |
 
 구단 표장과 데이터 제공 범위는 각 권리자·공급사의 정책에 따른다. 개인 키, SQLite 상태, 세션 데이터, 진단 파일은 저장소에 포함하지 않는다.
+
+## License
+
+소스와 동봉된 문서는 [MIT License](LICENSE)로 제공한다. `web/assets/logos/`의 구단 엠블럼·로고와 기타 제3자 상표는 MIT 라이선스 대상이 아니며 각 권리자에게 권리가 있다. 출처와 파일 해시는 `web/assets/logos/manifest.json`에 기록했다.
