@@ -25,7 +25,7 @@ export default class Archsport extends Extension {
         this._clearPendingRelogin();
         this._generation = 0;
         this._signals = [];
-        this._timer = this._restartTimer = this._pendingAlertTimer = 0;
+        this._timer = this._restartTimer = this._pendingAlertTimer = this._closingTimer = 0;
         this._failures = 0;
         this._expanded = false;
         this._showContext = false;
@@ -142,7 +142,7 @@ export default class Archsport extends Extension {
         this._sleeping = true;
         this._dock?.dock?.shutdown();
         this._stopWorker();
-        for (const name of ['_timer', '_pendingAlertTimer']) {
+        for (const name of ['_timer', '_pendingAlertTimer', '_closingTimer']) {
             if (this[name]) GLib.source_remove(this[name]);
             this[name] = 0;
         }
@@ -202,7 +202,8 @@ export default class Archsport extends Extension {
     }
 
     _label(text, style) {
-        const label = new St.Label({text: String(text), style_class: style, x_align: Clutter.ActorAlign.START});
+        const label = new St.Label({text: String(text), style_class: style, x_align: Clutter.ActorAlign.START,
+            y_align: Clutter.ActorAlign.CENTER});
         label.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
         return label;
     }
@@ -222,7 +223,9 @@ export default class Archsport extends Extension {
             return new St.Icon({gicon: new Gio.FileIcon({file: Gio.File.new_for_path(path)}), icon_size: size,
                 accessible_name: match[side], y_align: Clutter.ActorAlign.CENTER});
         // Missing crest is a plain name, never a fabricated replacement emblem.
-        return this._label(match?.[side] ?? '–', 'archsport-caption');
+        const label = this._label(displayTeam(match, side), 'archsport-caption');
+        label.accessible_name = match?.[side] ?? '';
+        return label;
     }
 
     _crestIcon(match, side, size) {
@@ -323,7 +326,7 @@ export default class Archsport extends Extension {
         this._render();
     }
 
-    _render() {
+    _render(afterCollapse = false) {
         if (!this._enabled || this._shellEnding) return;
         if (this._timer) { GLib.source_remove(this._timer); this._timer = 0; }
         const now = GLib.get_monotonic_time() / 1000;
@@ -340,7 +343,6 @@ export default class Archsport extends Extension {
         const incoming = localScoreFeedback ?? (this._alertAnimate ? alert : null);
         this._scoreFeedback = null;
         this._alertAnimate = false;
-        for (const child of this._root.get_children()) child.destroy();
         const data = this._payload;
         const match = data.match;
         const score = spoiler ? '● : ●' : match ? `${match.home_score ?? '–'} : ${match.away_score ?? '–'}` : '– : –';
@@ -350,8 +352,38 @@ export default class Archsport extends Extension {
             clock = new Date(match.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'});
         }
         const expanded = this._expanded || Boolean(alert);
+        if (this._closingTimer) {
+            if (!expanded) { this._visibility(); return; }
+            GLib.source_remove(this._closingTimer);
+            this._closingTimer = 0;
+            this._renderedExpanded = false;
+        }
         const opening = expanded && !this._renderedExpanded;
         const closing = !expanded && this._renderedExpanded;
+        if (closing && !afterCollapse && this._interface.get_boolean('enable-animations')) {
+            // Keep the expanded content for the reverse morph: secondary (scroll) leaves first,
+            // the primary header one stagger later, while the surface collapses underneath.
+            for (const [index, child] of this._root.get_children().entries()) {
+                const descendants = [child];
+                while (descendants.length) {
+                    const actor = descendants.pop();
+                    actor.reactive = false;
+                    actor.can_focus = false;
+                    descendants.push(...actor.get_children());
+                }
+                child.ease({opacity: 0, duration: DESIGN.motion.micro,
+                    delay: index === 0 ? DESIGN.motion.secondaryDelay - DESIGN.motion.primaryDelay : 0,
+                    mode: Clutter.AnimationMode[DESIGN.motion.collapseMode]});
+            }
+            this._visibility();
+            this._closingTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DESIGN.motion.collapse, () => {
+                this._closingTimer = 0;
+                this._render(true);
+                return GLib.SOURCE_REMOVE;
+            });
+            return;
+        }
+        for (const child of this._root.get_children()) child.destroy();
         let expandedHeader = null;
         let expandedBody = null;
         let expandedScroll = null;
@@ -375,10 +407,12 @@ export default class Archsport extends Extension {
         } else {
             this._root.add_style_class_name('archsport-open');
             const header = new St.BoxLayout({style_class: 'archsport-header'});
-            const identity = new St.BoxLayout({style_class: 'archsport-identity'});
-            identity.add_child(this._watchedCrestIcon(match, 18) ?? new St.Icon({
-                icon_name: 'x-office-calendar-symbolic', icon_size: 16,
-                y_align: Clutter.ActorAlign.CENTER, accessible_name: '경기 일정'}));
+            const identity = new St.BoxLayout({style_class: 'archsport-identity', x_expand: true});
+            // Schedule view: the section titles below carry the icons, so the header stays text-only.
+            if (alert || (match && match.status !== 'scheduled'))
+                identity.add_child(this._watchedCrestIcon(match, 18) ?? new St.Icon({
+                    icon_name: 'x-office-calendar-symbolic', icon_size: 16,
+                    y_align: Clutter.ActorAlign.CENTER, accessible_name: '경기 일정'}));
             const alertTitle = alert?.kind === 'score' ?
                 alert.scoring_side === 'watched' ? 'GOAL' : alert.scoring_side === 'opponent' ? '득점' : alert.title : alert?.title;
             identity.add_child(this._label(data.mode === 'demo' && alertTitle ? `시연 · ${alertTitle}` :
@@ -432,6 +466,7 @@ export default class Archsport extends Extension {
                         duration: this._interface.get_boolean('enable-animations') ? DESIGN.motion.event : 0,
                         mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
                     for (const crest of [homeLogo, awayLogo].filter(Boolean)) {
+                        crest.set_pivot_point(0.5, 0.5);
                         crest.scale_x = crest.scale_y = 0.9;
                         crest.ease({scale_x: 1, scale_y: 1,
                             duration: this._interface.get_boolean('enable-animations') ? DESIGN.motion.event : 0,
@@ -487,7 +522,8 @@ export default class Archsport extends Extension {
                             const label = this._label(`${displayTeam(fixture, 'home')}  ${spoiler ? '● : ●' : `${fixture.home_score ?? '–'} : ${fixture.away_score ?? '–'}`}  ${displayTeam(fixture, 'away')}`,
                                 'archsport-context-text');
                             label.x_expand = true;
-                            label.accessible_name = `${fixture.home} 대 ${fixture.away}, 홈 ${fixture.home_score ?? '미확인'} 대 원정 ${fixture.away_score ?? '미확인'}`;
+                            label.accessible_name = `홈 ${fixture.home} 대 원정 ${fixture.away}, ` +
+                                (spoiler ? '점수 숨김' : `${fixture.home_score ?? '미확인'} 대 ${fixture.away_score ?? '미확인'}`);
                             row.add_child(label);
                             expandedBody.add_child(row);
                         }
@@ -716,7 +752,8 @@ export default class Archsport extends Extension {
         this._stopWorker();
         if (this._timer) GLib.source_remove(this._timer);
         if (this._pendingAlertTimer) GLib.source_remove(this._pendingAlertTimer);
-        this._timer = 0;
+        if (this._closingTimer) GLib.source_remove(this._closingTimer);
+        this._timer = this._closingTimer = 0;
         if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
         this._sleepSubscription = 0;
         for (const [object, id] of this._signals ?? []) {

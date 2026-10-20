@@ -53,9 +53,10 @@ export function fixturePresentation(fixture, watchedTeams, {result = false, spoi
         date.toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit', hour12: false}) : '';
     const fullDate = validDate ? date.toLocaleString('ko-KR',
         {year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', hour: '2-digit', minute: '2-digit'}) : '날짜 미확인';
-    const fullNames = `${fixture?.home ?? '홈 팀 미확인'} 대 ${fixture?.away ?? '원정 팀 미확인'}`;
+    const fullNames = `홈 ${fixture?.home ?? '미확인'} 대 원정 ${fixture?.away ?? '미확인'}`;
     const accessibleName = `${fullDate}, ${fullNames}${direction ? `, 감시 팀 ${direction}` : ''}` +
-        (result ? `, 홈 ${fixture?.home_score ?? '미확인'} 대 원정 ${fixture?.away_score ?? '미확인'}` : '');
+        (result ? spoiler ? ', 점수 숨김' :
+            `, 홈 ${fixture?.home_score ?? '미확인'} 대 원정 ${fixture?.away_score ?? '미확인'}` : '');
     return {primary, direction, score, shortDate, fullDate, crestSide: oneSide,
         watchedName: oneSide ? displayTeam(fixture, oneSide) : null, accessibleName};
 }

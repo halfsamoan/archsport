@@ -59,7 +59,7 @@ export const DESIGN = {
   "control": {
     "icon": 15,
     "size": 28,
-    "compactHeight": 54
+    "compactHeight": 58
   },
   "shadow": {
     "surface": "none"
@@ -80,7 +80,7 @@ export const DESIGN = {
     "neckWidth": 104,
     "neckHeight": 10,
     "shoulderDepth": 22,
-    "compactShoulder": 18
+    "compactShoulder": 28
   },
   "material": {
     "blurRadius": 28,

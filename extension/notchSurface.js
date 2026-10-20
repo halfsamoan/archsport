@@ -33,6 +33,13 @@ export function createNotchSurface(content) {
         const [width, height] = area.get_surface_size();
         if (width < 1 || height < 1) return;
         const context = area.get_context();
+        if (height <= DESIGN.geometry.neckHeight + 2) {
+            // Ignition frames are the neck alone; the shoulder curves self-intersect at this size.
+            context.rectangle(0, 0, width, height);
+            context.setSourceRGBA(0.035, 0.039, 0.047, DESIGN.material.tintAlpha);
+            context.fill();
+            return;
+        }
         const center = width / 2;
         const neck = Math.min(DESIGN.geometry.neckWidth, Math.max(1, width - 24));
         const compact = height <= 60;
