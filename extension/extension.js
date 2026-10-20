@@ -1,4 +1,5 @@
 import Clutter from 'gi://Clutter';
+import Atk from 'gi://Atk';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -12,7 +13,7 @@ import {DockParticipant, easeOnCurve} from './notchDock.js';
 import {isActorWithin} from './dockModel.js';
 import {createNotchSurface} from './notchSurface.js';
 import {DESIGN} from './designTokens.js';
-import {calculateExpandedViewport, scoreDirection, eventSummary} from './uiModel.js';
+import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement} from './uiModel.js';
 import {displayTeam, fixturePresentation} from './fixturePresentation.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
@@ -38,6 +39,10 @@ export default class Archsport extends Extension {
         this._generation = (this._generation ?? 0) + 1;
         this._signals = [];
         this._timer = this._restartTimer = this._pendingAlertTimer = this._closingTimer = 0;
+        this._announcementTimer = 0;
+        this._announcedAlertKeys ??= new Set();
+        this._lastAnnouncementAt ??= null;
+        this._queuedAnnouncement = null;
         this._failures = 0;
         this._expanded = false;
         this._returnWindow = null;
@@ -122,6 +127,11 @@ export default class Archsport extends Extension {
                 if (this._settings.get_boolean('spoiler') || !this._settings.get_boolean('expand-on-event') ||
                     !this._settings.get_boolean('show-notch'))
                     this._pendingAlerts = [];
+                if (this._settings.get_boolean('spoiler')) {
+                    if (this._announcementTimer) GLib.source_remove(this._announcementTimer);
+                    this._announcementTimer = 0;
+                    this._queuedAnnouncement = null;
+                }
                 this._persistPendingAlerts();
                 this._activeAlert = null;
                 this._alertAnimate = false;
@@ -233,6 +243,7 @@ export default class Archsport extends Extension {
             visible = this._dock.claim(this._expanded ? 100 : 80);
         this._indicator.visible = true;
         this._dock.update({width, height, visible, expanded: height > DESIGN.control.compactHeight});
+        if (visible && this._activeAlert) this._announceAlert(this._activeAlert);
     }
 
     _onOverviewShowing() {
@@ -385,6 +396,7 @@ export default class Archsport extends Extension {
         if (this._expanded && alert.kind === 'score') {
             this._scoreFeedback = alert;
             this._render();
+            this._announceAlert(alert);
             this._schedulePendingAlert();
             return;
         }
@@ -392,6 +404,49 @@ export default class Archsport extends Extension {
         this._alertAnimate = true;
         this._alertDeadline = GLib.get_monotonic_time() / 1000 + this._settings.get_int('event-seconds') * 1000;
         this._render();
+        this._announceAlert(alert);
+    }
+
+    _alertKey(alert) {
+        return alert?.id ?? alert?.fingerprint ??
+            (alert?.kind === 'kickoff' && alert.match_id && alert.kickoff_utc ?
+                `${alert.match_id}:${alert.kickoff_utc}:${alert.title ?? ''}` : null);
+    }
+
+    _alertVisible(alert, key) {
+        if (!this._dock?.state.visible || Main.overview.visible || Main.sessionMode.isLocked ||
+            (this._settings.get_boolean('hide-fullscreen') && this._monitor()?.inFullscreen)) return false;
+        if (this._alertKey(this._activeAlert) === key) return true;
+        return alert.kind === 'score' && this._expanded &&
+            String(this._payload.match?.id) === String(alert.match_id);
+    }
+
+    _announceAlert(alert) {
+        if (!['score', 'kickoff'].includes(alert?.kind)) return;
+        const key = this._alertKey(alert);
+        if (!key || this._announcedAlertKeys.has(key) || !this._alertVisible(alert, key)) return;
+        const now = GLib.get_monotonic_time() / 1000;
+        const wait = this._lastAnnouncementAt === null ? 0 : 10000 - (now - this._lastAnnouncementAt);
+        if (wait > 0) {
+            this._queuedAnnouncement = alert;
+            if (!this._announcementTimer) {
+                this._announcementTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.ceil(wait), () => {
+                    this._announcementTimer = 0;
+                    const pending = this._queuedAnnouncement;
+                    this._queuedAnnouncement = null;
+                    if (pending) this._announceAlert(pending);
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+            return;
+        }
+        const text = alertAnnouncement(alert, this._payload.match, this._settings.get_boolean('spoiler'));
+        try { this._root.get_accessible()?.emit('notification', text, Atk.Live.POLITE); }
+        catch (_error) { /* ATK notification support varies across Shell and Orca versions. */ }
+        this._announcedAlertKeys.add(key);
+        if (this._announcedAlertKeys.size > 256)
+            this._announcedAlertKeys.delete(this._announcedAlertKeys.values().next().value);
+        this._lastAnnouncementAt = now;
     }
 
     _render(afterCollapse = false) {
@@ -834,7 +889,9 @@ export default class Archsport extends Extension {
         if (this._timer) GLib.source_remove(this._timer);
         if (this._pendingAlertTimer) GLib.source_remove(this._pendingAlertTimer);
         if (this._closingTimer) GLib.source_remove(this._closingTimer);
-        this._timer = this._pendingAlertTimer = this._closingTimer = 0;
+        if (this._announcementTimer) GLib.source_remove(this._announcementTimer);
+        this._timer = this._pendingAlertTimer = this._closingTimer = this._announcementTimer = 0;
+        this._queuedAnnouncement = null;
         if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
         this._sleepSubscription = 0;
         for (const [object, id] of this._signals ?? []) {
