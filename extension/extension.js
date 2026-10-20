@@ -33,6 +33,7 @@ export default class Archsport extends Extension {
         this._sleeping = false;
         this._activeAlert = null;
         this._alertAnimate = false;
+        this._scoreFeedback = null;
         this._pendingAlerts = [];
         this._pendingAlertRecord = this._readPendingAlertRecord();
         this._alertDeadline = 0;
@@ -310,6 +311,12 @@ export default class Archsport extends Extension {
             this._schedulePendingAlert();
             return;
         }
+        if (this._expanded && alert.kind === 'score') {
+            this._scoreFeedback = alert;
+            this._render();
+            this._schedulePendingAlert();
+            return;
+        }
         this._activeAlert = alert;
         this._alertAnimate = true;
         this._alertDeadline = GLib.get_monotonic_time() / 1000 + this._settings.get_int('event-seconds') * 1000;
@@ -329,7 +336,9 @@ export default class Archsport extends Extension {
             this._alertAnimate = false;
         }
         const alert = this._activeAlert;
-        const incoming = this._alertAnimate ? alert : null;
+        const localScoreFeedback = this._scoreFeedback;
+        const incoming = localScoreFeedback ?? (this._alertAnimate ? alert : null);
+        this._scoreFeedback = null;
         this._alertAnimate = false;
         for (const child of this._root.get_children()) child.destroy();
         const data = this._payload;
@@ -422,6 +431,12 @@ export default class Archsport extends Extension {
                     scoreLabel.ease({opacity: 255, translation_y: 0,
                         duration: this._interface.get_boolean('enable-animations') ? DESIGN.motion.event : 0,
                         mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+                    for (const crest of [homeLogo, awayLogo].filter(Boolean)) {
+                        crest.scale_x = crest.scale_y = 0.9;
+                        crest.ease({scale_x: 1, scale_y: 1,
+                            duration: this._interface.get_boolean('enable-animations') ? DESIGN.motion.event : 0,
+                            mode: Clutter.AnimationMode.EASE_OUT_CUBIC});
+                    }
                 }
                 scoreboard.add_child(scoreLabel);
                 scoreboard.add_child(away);
@@ -431,7 +446,7 @@ export default class Archsport extends Extension {
             const latest = alert?.kind === 'score' ? events.filter(e => e.kind === 'Goal' && e.detail !== 'Missed Penalty').at(-1) : events.at(-1);
             if (latest && !spoiler) {
                 const eventLabel = this._label(eventSummary(latest), 'archsport-event');
-                if (incoming) {
+                if (incoming && !localScoreFeedback) {
                     eventLabel.opacity = 0;
                     eventLabel.translation_y = 7;
                     eventLabel.ease({opacity: 255, translation_y: 0,
