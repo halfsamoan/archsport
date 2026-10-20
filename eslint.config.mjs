@@ -11,6 +11,7 @@ export default [{
     },
     rules: {
         'no-undef': 'error',
-        'no-unused-vars': ['warn', {args: 'none'}],
+        'no-unused-vars': ['warn', {args: 'none', caughtErrorsIgnorePattern: '^_',
+            argsIgnorePattern: '^_', varsIgnorePattern: '^_'}],
     },
 }];
