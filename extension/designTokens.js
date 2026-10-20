@@ -87,6 +87,6 @@ export const DESIGN = {
     "blurBrightness": 0.73,
     "tintAlpha": 0.82,
     "highlightAlpha": 0.05,
-    "blurInset": 24
+    "blurInset": 8
   }
 };

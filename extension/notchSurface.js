@@ -3,17 +3,19 @@ import Shell from 'gi://Shell';
 import St from 'gi://St';
 import {DESIGN} from './designTokens.js';
 
-// The drawing area paints the tint and edge only. It does not clip BlurEffect.
-// Blur is inset into the body, where its rectangular allocation stays inside
-// the silhouette even at the rounded bottom corners.
+// The drawing area paints the tint and edge only. It does not clip BlurEffect,
+// and a BACKGROUND blur paints its whole allocation. Blur is inset into the body,
+// where its rectangle stays inside the silhouette even at the rounded bottom
+// corners (the Bézier corner reaches ~0.31 × radius inward).
 export function createNotchSurface(content) {
     const surface = new St.Widget({layout_manager: new Clutter.BinLayout(),
         width: DESIGN.geometry.neckWidth, height: 8, visible: false, clip_to_allocation: true});
+    const inset = DESIGN.material.blurInset;
+    // St re-applies CSS margins on every style change, so margin_* properties
+    // would reset to 0; the inset has to live in the widget's own style.
     const blur = new St.Widget({style_class: 'shared-notch-blur', reactive: false,
-        x_expand: true, y_expand: true,
-        margin_left: DESIGN.material.blurInset, margin_right: DESIGN.material.blurInset,
-        margin_top: DESIGN.geometry.neckHeight + DESIGN.geometry.shoulderDepth + 2,
-        margin_bottom: DESIGN.material.blurInset, visible: false});
+        x_expand: true, y_expand: true, visible: false,
+        style: `margin: ${DESIGN.geometry.neckHeight + DESIGN.geometry.shoulderDepth + 2}px ${inset}px ${inset}px;`});
     let hasBlur = false;
     try {
         const properties = new Set(Shell.BlurEffect.list_properties().map(p => p.name));
@@ -110,6 +112,10 @@ export function createNotchSurface(content) {
         bottomHit.width = Math.max(1, width - 2 * radius);
         bottomHit.margin_top = Math.max(0, height - radius);
     };
+    // A theme reload (e.g. light/dark switch) resets margin_* to the CSS value 0,
+    // which would make the transparent corners reactive until the next resize.
+    for (const hit of [neckHit, ...shoulderHits, bodyHit, bottomHit])
+        hit.connect('style-changed', updateHitRegions);
     surface.connect('notify::height', () => {
         if (hasBlur) blur.visible = surface.height > 60;
         updateHitRegions();
