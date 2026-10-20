@@ -1,5 +1,7 @@
 import importlib.util
 from pathlib import Path
+import json
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -12,6 +14,33 @@ SPEC.loader.exec_module(installer)
 
 
 class InstallPathTests(unittest.TestCase):
+    def test_schema_compile_failure_removes_staging_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / 'source'
+            parent = root / 'extensions'
+            parent.mkdir()
+            (source / 'extension/schemas').mkdir(parents=True)
+            (source / 'extension/metadata.json').write_text(
+                json.dumps({'uuid': installer.UUID}), encoding='utf-8')
+            (source / 'archsport').mkdir()
+            (source / 'web/assets/logos').mkdir(parents=True)
+            (source / 'data').mkdir()
+            with patch.object(installer.subprocess, 'run',
+                              side_effect=subprocess.CalledProcessError(1, 'glib-compile-schemas')):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    installer.prepare_staging(source, parent, 'glib-compile-schemas')
+            self.assertEqual(list(parent.glob('.archsport-stage-*')), [])
+
+    def test_pruning_sixth_backup_removes_oldest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for index in range(6):
+                (root / f'extension-{index:02d}').mkdir()
+            installer.prune_backups(root)
+            self.assertFalse((root / 'extension-00').exists())
+            self.assertEqual(len(list(root.glob('extension-*'))), 5)
+
     def test_updates_supported_requires_gsettings_and_manager(self):
         with tempfile.TemporaryDirectory() as temp:
             manager = Path(temp) / 'org.gnome.Extensions.desktop'

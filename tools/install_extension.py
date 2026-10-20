@@ -83,6 +83,36 @@ def enable_extension(uuid=UUID, *, command=None):
     return result.returncode == 0
 
 
+def verify_identity(path):
+    metadata = json.loads((path / 'metadata.json').read_text(encoding='utf-8'))
+    if metadata.get('uuid') != UUID:
+        raise SystemExit(f'다른 확장을 덮어쓰지 않습니다: {path}')
+
+
+def prepare_staging(source, parent, compiler):
+    staging = Path(tempfile.mkdtemp(prefix='.archsport-stage-', dir=parent))
+    try:
+        shutil.copytree(source / 'extension', staging, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns('gschemas.compiled'))
+        shutil.copytree(source / 'archsport', staging / 'archsport',
+                        ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        shutil.copytree(source / 'web/assets/logos', staging / 'assets/logos')
+        shutil.copytree(source / 'data', staging / 'data')
+        subprocess.run([compiler, '--strict', str(staging / 'schemas')], check=True)
+        verify_identity(staging)
+        return staging
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+
+
+def prune_backups(backup_root, keep=5):
+    backups = sorted((path for path in Path(backup_root).glob('extension-*')
+                      if path.is_dir() and not path.is_symlink()), key=lambda path: path.name)
+    for obsolete in backups[:-keep]:
+        shutil.rmtree(obsolete)
+
+
 def _replace_direct(staging, target, parked, was_active):
     try:
         if target.exists():
@@ -162,23 +192,16 @@ def main():
         _, previous_state = running_version()
         was_active = previous_state == 'ACTIVE'
     parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix='.archsport-stage-', dir=parent))
-    shutil.copytree(source / 'extension', staging, dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns('gschemas.compiled'))
-    shutil.copytree(source / 'archsport', staging / 'archsport', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
-    shutil.copytree(source / 'web/assets/logos', staging / 'assets/logos')
-    shutil.copytree(source / 'data', staging / 'data')
-    subprocess.run([compiler, '--strict', str(staging / 'schemas')], check=True)
+    staging = prepare_staging(source, parent, compiler)
     new_metadata = json.loads((staging / 'metadata.json').read_text(encoding='utf-8'))
     installed_version = int(new_metadata['version'])
     if target.exists():
-        metadata = json.loads((target / 'metadata.json').read_text(encoding='utf-8'))
-        if metadata.get('uuid') != UUID:
-            raise SystemExit(f'다른 확장을 덮어쓰지 않습니다. 준비 폴더 보존: {staging}')
+        verify_identity(target)
         backup_root = Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'archsport/backups'
         backup_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         backup = backup_root / datetime.now().strftime('extension-%Y%m%d-%H%M%S-%f')
         shutil.copytree(target, backup)
+        prune_backups(backup_root)
         print(f'이전 확장 백업: {backup}')
     update_support = updates_supported() if target.exists() and args.upgrade and not args.direct else False
     strategy = choose_install_path(target.exists(), upgrade=args.upgrade, direct=args.direct,
