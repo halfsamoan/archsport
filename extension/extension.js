@@ -102,10 +102,10 @@ export default class Archsport extends Extension {
         this._connect(this._root, 'destroy', () => this._beginShellShutdown());
         this._connect(this._indicator, 'destroy', () => this._beginShellShutdown());
         this._connect(Main.panel, 'notify::height', () => this._visibility());
-        this._connect(Main.overview, 'showing', () => this._visibility());
+        this._connect(Main.overview, 'showing', () => this._onOverviewShowing());
         this._connect(Main.overview, 'hidden', () => this._visibility());
         this._connect(Main.sessionMode, 'updated', () => this._visibility());
-        this._connect(global.display, 'in-fullscreen-changed', () => this._visibility());
+        this._connect(global.display, 'in-fullscreen-changed', () => this._onFullscreenChanged());
         this._connect(this._settings, 'changed', (_settings, key) => {
             if (DATA_KEYS.has(key)) this._restartWorker();
             else {
@@ -218,9 +218,30 @@ export default class Archsport extends Extension {
             DESIGN.geometry.archExpanded) : DESIGN.geometry.archCompact,
             Math.max(1, (monitor?.width ?? 800) - 24));
         const height = expanded ? (this._contentHeight ?? (this._activeAlert ? 160 : 180)) : DESIGN.control.compactHeight;
-        const visible = allowed && !Main.overview.visible && !Main.sessionMode.isLocked && !fullscreen;
+        let visible = allowed && !Main.overview.visible && !Main.sessionMode.isLocked && !fullscreen;
+        if (visible && (this._expanded || this._activeAlert) && this._dock.dock.active?.id !== this.uuid)
+            visible = this._dock.claim(this._expanded ? 100 : 80);
         this._indicator.visible = true;
         this._dock.update({width, height, visible, expanded: height > DESIGN.control.compactHeight});
+    }
+
+    _onOverviewShowing() {
+        if (this._expanded && !this._activeAlert) {
+            this._expanded = false;
+            this._render();
+        } else {
+            this._visibility();
+        }
+    }
+
+    _onFullscreenChanged() {
+        if (this._settings.get_boolean('hide-fullscreen') && this._monitor()?.inFullscreen &&
+            this._expanded && !this._activeAlert) {
+            this._expanded = false;
+            this._render();
+        } else {
+            this._visibility();
+        }
     }
 
     _label(text, style) {
@@ -344,7 +365,7 @@ export default class Archsport extends Extension {
             return;
         }
         const queued = this._pendingAlerts.length;
-        const alert = takePendingAlert(this._pendingAlerts, () => this._dock.claim(80));
+        const alert = takePendingAlert(this._pendingAlerts, () => this._dock.claim(this._expanded ? 100 : 80));
         // A blocked claim retries every 2 s; rewrite the file only when the queue changed.
         if (this._pendingAlerts.length !== queued) this._persistPendingAlerts();
         if (!alert) {

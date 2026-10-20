@@ -281,3 +281,11 @@ test('closing releases notch focus and only grabs the root while visible', () =>
     assert.match(source, /if \(expanding && this\._dock\.state\.visible\) this\._root\.grab_key_focus\(\)/);
     assert.match(source, /if \(this\._dock\.state\.visible\) this\._root\.grab_key_focus\(\)/);
 });
+
+test('overview and hidden fullscreen collapse Archsport unless an alert is active', () => {
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /_onOverviewShowing\(\) \{\s*if \(this\._expanded && !this\._activeAlert\) \{\s*this\._expanded = false;\s*this\._render\(\);/);
+    assert.match(source, /_onFullscreenChanged\(\) \{\s*if \(this\._settings\.get_boolean\('hide-fullscreen'\) && this\._monitor\(\)\?\.inFullscreen &&\s*this\._expanded && !this\._activeAlert\)/);
+    assert.match(source, /Main\.overview, 'showing', \(\) => this\._onOverviewShowing\(\)/);
+    assert.match(source, /this\._dock\.claim\(this\._expanded \? 100 : 80\)/);
+});
