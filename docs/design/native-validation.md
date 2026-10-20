@@ -13,7 +13,16 @@ Archsport 3상태·matci 3상태를 촬영했다. [Archsport 캡처](iterations/
 [matci 캡처](../../../matci/docs/design/iterations/README.md)를 참조한다.
 최종 형태의 상단 투명 모서리는 `MetaBackgroundActor`, 목·어깨는 반응형
 노치 actor로 pick된 것을 확인했다. 이 검사는 실제 마우스 클릭·키보드·배율
-검증을 대신하지 않는다. 실제 사용자 Shell은 아직 v16/v13 ACTIVE다.
+검증을 대신하지 않는다. 새 v18/v15를 다음 로그인용으로 함께 스테이징했고,
+실제 사용자 Shell은 아직 v17/v14 ACTIVE다. 스테이징된 핵심 UI 파일은
+각 저장소 소스와 SHA-256이 일치한다.
+
+같은 격리 Shell·가상 화면에서 Archsport를 20회 열고 닫으며 `after-paint`
+간격을 기록했다. 배경 블러 켬: 466프레임, 중앙값 16.57ms, 95백분위
+19.91ms, 25ms 초과 19회. 블러 끔: 465프레임, 중앙값 16.63ms,
+95백분위 19.86ms, 25ms 초과 20회였다. 100ms 이상 간격은 유휴 구간으로
+제외했다. 이 비교에서는 뚜렷한 차이가 없었지만 headless 가상 모니터의
+결과이며 실제 화면의 프레임 안정성·5분 유휴 CPU 판정은 아니다.
 
 ## 2026-10-20 Pretendard / reveal candidate (v17/v14)
 
