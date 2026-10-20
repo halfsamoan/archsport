@@ -1,5 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape,
     classifyOutsideSurface, dispatchOutsideDismiss} from '../extension/dockModel.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary} from '../extension/uiModel.js';
@@ -171,4 +172,11 @@ test('adding a new alert does not extend the lifetime of older queued alerts', (
     enqueuePendingAlert(queue, newAlert, now - 60_000);
     const restored = restorePendingAlerts({saved_at: now, alerts: queue}, {match: fixture}, now);
     assert.deepEqual(restored, [{...newAlert, queued_at: now - 60_000}]);
+});
+
+test('re-enable keeps the worker generation monotonic so same-tick stale reads close their pipe', () => {
+    // GJS-only module; guard the lifecycle invariant at the source level.
+    const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
+    assert.match(source, /this\._generation = \(this\._generation \?\? 0\) \+ 1;/);
+    assert.doesNotMatch(source, /this\._generation = 0;/);
 });

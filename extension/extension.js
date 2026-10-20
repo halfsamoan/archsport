@@ -23,7 +23,8 @@ export default class Archsport extends Extension {
         this._enabled = true;
         this._shellEnding = false;
         this._clearPendingRelogin();
-        this._generation = 0;
+        // Monotonic across disable/enable so same-tick re-enable still marks old reads stale.
+        this._generation = (this._generation ?? 0) + 1;
         this._signals = [];
         this._timer = this._restartTimer = this._pendingAlertTimer = 0;
         this._failures = 0;
@@ -305,8 +306,10 @@ export default class Archsport extends Extension {
             this._schedulePendingAlert();
             return;
         }
+        const queued = this._pendingAlerts.length;
         const alert = takePendingAlert(this._pendingAlerts, () => this._dock.claim(80));
-        this._persistPendingAlerts();
+        // A blocked claim retries every 2 s; rewrite the file only when the queue changed.
+        if (this._pendingAlerts.length !== queued) this._persistPendingAlerts();
         if (!alert) {
             this._schedulePendingAlert();
             return;
@@ -649,7 +652,11 @@ export default class Archsport extends Extension {
 
     _readLine(stream, generation) {
         stream.read_line_async(GLib.PRIORITY_DEFAULT, this._cancel, (source, result) => {
-            if (!this._enabled || generation !== this._generation) return;
+            if (!this._enabled || generation !== this._generation) {
+                // _stopWorker cannot close a stream with a pending read; release the pipe now.
+                try { source.close(null); } catch (_error) { /* already closed */ }
+                return;
+            }
             try {
                 const [line] = source.read_line_finish_utf8(result);
                 if (line === null) { this._workerFailed(); return; }
@@ -716,7 +723,7 @@ export default class Archsport extends Extension {
         this._stopWorker();
         if (this._timer) GLib.source_remove(this._timer);
         if (this._pendingAlertTimer) GLib.source_remove(this._pendingAlertTimer);
-        this._timer = 0;
+        this._timer = this._pendingAlertTimer = 0;
         if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
         this._sleepSubscription = 0;
         for (const [object, id] of this._signals ?? []) {
@@ -735,5 +742,7 @@ export default class Archsport extends Extension {
             } catch (_error) { /* Shell already owns actor disposal */ }
         }
         this._surface = this._root = this._indicator = this._settings = this._interface = this._payload = this._dock = null;
+        this._activeAlert = this._scoreFeedback = this._pendingAlertRecord = null;
+        this._pendingAlerts = [];
     }
 }

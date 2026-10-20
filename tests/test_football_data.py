@@ -77,6 +77,16 @@ class FootballDataTests(unittest.TestCase):
         schedule.fetch_context(NOW + timedelta(minutes=5))
         self.assertEqual(len(calls), len(date_windows(NOW.date())))
 
+    def test_sliding_windows_do_not_accumulate_cache_rows(self):
+        schedule = FootballDataSchedule({'football_data_key_file': str(self.key_file)}, self.store,
+                                        lambda request, **kwargs: Response(b'{"matches": []}'))
+        schedule.fetch_context(NOW)
+        later = NOW + timedelta(days=1)
+        schedule.fetch_context(later)
+        keys = {key for (key,) in self.store.db.execute("SELECT key FROM cache WHERE key LIKE 'football-data:%'")}
+        self.assertEqual(keys, {f'football-data:{start.isoformat()}:{end.isoformat()}'
+                                for start, end in date_windows(later.date())})
+
     def test_team_aliases_and_provider_neutral_fixture_match(self):
         self.assertEqual(canonical_team('FC Barcelona'), 'barcelona')
         self.assertEqual(canonical_team('SS Lazio'), 'lazio')

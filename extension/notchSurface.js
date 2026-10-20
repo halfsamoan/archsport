@@ -59,6 +59,8 @@ export function createNotchSurface(content) {
         context.setSourceRGBA(1, 1, 1, DESIGN.material.highlightAlpha);
         context.setLineWidth(1);
         context.stroke();
+        // GNOME Shell's own repaint handlers free the Cairo context immediately.
+        context.$dispose();
     });
     surface.add_child(shape);
     const neckHit = new St.Widget({reactive: true, can_focus: false,
