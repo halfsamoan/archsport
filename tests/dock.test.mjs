@@ -27,8 +27,11 @@ test('event summary stays readable with extra time and missing provider fields',
 
 test('goal announcements include score and scorer except in spoiler mode', () => {
     const alert = {kind: 'score', title: '스코어 변경', fingerprint: 'goal-1'};
+    // The event list accounts for all three goals; a shorter list names no scorer (liveDisplay test).
     const match = {home: 'Barcelona', away: 'Como', home_score: 2, away_score: 1,
-        events: [{kind: 'Goal', elapsed: 61, player: 'A. Player', detail: 'Normal Goal'}]};
+        events: [{kind: 'Goal', elapsed: 12, player: 'B. Player', detail: 'Normal Goal'},
+            {kind: 'Goal', elapsed: 40, player: 'C. Player', detail: 'Penalty'},
+            {kind: 'Goal', elapsed: 61, player: 'A. Player', detail: 'Normal Goal'}]};
     const full = alertAnnouncement(alert, match);
     assert.match(full, /Barcelona 2 대 1 Como/);
     assert.match(full, /골 · 61′ · A\. Player/);

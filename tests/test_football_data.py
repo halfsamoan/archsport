@@ -258,6 +258,11 @@ class ApiFootballMultiTeamTests(unittest.TestCase):
         result = provider.fetch(NOW + timedelta(minutes=3))
         self.assertEqual(result[0]['events'][0]['player'], 'Player')
         self.assertEqual(parse_qs(urlparse(requests[-1].full_url).query), {'fixture': ['55']})
+        # Later polls without a change keep the scorer line, at no extra request.
+        bodies.append({'errors': [], 'response': [changed]})
+        unchanged = provider.fetch(NOW + timedelta(minutes=8))
+        self.assertEqual(unchanged[0]['events'][0]['player'], 'Player')
+        self.assertEqual(len(requests), 4)
 
     def test_match_leaving_live_feed_is_read_once_by_id_for_its_final_score(self):
         live = self.fixture(77, 'Atletico Madrid', 'Barcelona', '2026-11-08T20:00:00Z', (1, 1))

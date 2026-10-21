@@ -350,16 +350,24 @@ class ApiFootballLive(ApiFootball):
         signature_key = f'live-signature:{original_id}'
         previous_signature = self.store.cache_get(signature_key)
         signature_saved = previous_signature is None or tuple(previous_signature) == signature
+        events_key = f'live-events:{original_id}'
+        fresh_events = has_events
         # A response that already carries events (fixtures?id does) needs no second request.
         if not has_events and previous_signature is not None and tuple(previous_signature) != signature:
             try:
                 events = self.get('fixtures/events', fixture=original_id)
                 normalized['events'] = normalize(item, events)['events']
-                signature_saved = True
+                signature_saved = fresh_events = True
             except ProviderError:
                 self.warning = '점수는 갱신했지만 경기 상세를 받지 못했습니다.'
         if signature_saved or has_events:
             self.store.cache_set(signature_key, signature)
+        # Events are read only on a change, so unchanged polls carry the last list forward. The
+        # UI shows a scorer only while that list accounts for every goal on the board.
+        if fresh_events:
+            self.store.cache_set(events_key, normalized['events'])
+        else:
+            normalized['events'] = self.store.cache_get(events_key, [])
         return normalized
 
     def fetch(self, now=None, scheduled=()):

@@ -60,3 +60,20 @@ test('a failing live feed explains itself in the open notch', () => {
     // Budget and quota messages lead to settings, never to a reconnect that spends a refused request.
     assert.match(source, /\/키\|예산\|할당량\|설정\|요금제\|시즌\/\.test\(reason\)/);
 });
+
+test('a scorer is named only from an event list that accounts for every goal', async () => {
+    const {latestEvent, alertAnnouncement} = await import('../extension/uiModel.js');
+    const goal = (elapsed, player) => ({kind: 'Goal', detail: 'Normal Goal', elapsed, player, team: 'Barcelona'});
+    const card = {kind: 'Card', detail: 'Yellow Card', elapsed: 70, player: 'Booked'};
+    const match = {home: 'Barcelona', away: 'Sevilla', home_score: 1, away_score: 0, events: [goal(61, 'First'), card]};
+    assert.equal(latestEvent(match).player, 'Booked');
+    assert.equal(latestEvent(match, true).player, 'First');
+    // A second goal the list does not know yet: no line rather than the previous scorer.
+    const behind = {...match, home_score: 2};
+    assert.equal(latestEvent(behind, true), null);
+    assert.equal(latestEvent(behind), null);
+    assert.doesNotMatch(alertAnnouncement({kind: 'score', title: '스코어 변경'}, behind), /First/);
+    // Missed penalties never count as a goal.
+    assert.equal(latestEvent({...match, events: [goal(61, 'First'), {kind: 'Goal', detail: 'Missed Penalty', player: 'Miss'}]}, true).player, 'First');
+    assert.equal(latestEvent({home_score: 0, away_score: 0, events: [card]}).player, 'Booked');
+});

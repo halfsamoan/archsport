@@ -67,6 +67,20 @@ export function eventSummary(event) {
     return [label, elapsed, player].filter(Boolean).join(' · ') || '경기 상황';
 }
 
+const isGoal = event => String(event?.kind ?? '').toLowerCase() === 'goal' &&
+    !/miss|shootout|cancel|disallow/i.test(String(event?.detail ?? ''));
+
+// The newest event (or goal), but only from a list that accounts for every goal on the board:
+// events can lag the score, and a list from before the latest goal would credit the previous scorer.
+export function latestEvent(match, goalOnly = false) {
+    const events = Array.isArray(match?.events) ? match.events : [];
+    const goals = events.filter(isGoal);
+    const scored = (Number.isInteger(match?.home_score) ? match.home_score : 0) +
+        (Number.isInteger(match?.away_score) ? match.away_score : 0);
+    if (goals.length < scored) return null;
+    return (goalOnly ? goals : events).at(-1) ?? null;
+}
+
 export function alertAnnouncement(alert, match, spoiler = false) {
     const title = String(alert?.title ?? (alert?.kind === 'score' ? '스코어 변경' : '킥오프'));
     if (spoiler) return `${title} 알림`;
@@ -74,6 +88,5 @@ export function alertAnnouncement(alert, match, spoiler = false) {
         return `${title}. ${alert.club ?? '경기'} 대 ${alert.opponent ?? '상대'}.`;
     const score = match ? `${match.home ?? '홈'} ${match.home_score ?? '미확인'} 대 ` +
         `${match.away_score ?? '미확인'} ${match.away ?? '원정'}` : '';
-    const goal = match?.events?.filter(event => event.kind === 'Goal' && event.detail !== 'Missed Penalty').at(-1);
-    return [title, score, eventSummary(goal)].filter(Boolean).join('. ');
+    return [title, score, eventSummary(latestEvent(match, true))].filter(Boolean).join('. ');
 }

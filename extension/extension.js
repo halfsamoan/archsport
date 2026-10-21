@@ -13,7 +13,8 @@ import {DockParticipant, easeOnCurve} from './notchDock.js';
 import {isActorWithin} from './dockModel.js';
 import {createNotchSurface} from './notchSurface.js';
 import {DESIGN} from './designTokens.js';
-import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement, liveMinuteLabel} from './uiModel.js';
+import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement, latestEvent,
+    liveMinuteLabel} from './uiModel.js';
 import {displayTeam, fixturePresentation, teamCode} from './fixturePresentation.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
@@ -725,8 +726,7 @@ export default class Archsport extends Extension {
                 scoreboard.add_child(away);
                 expandedBody.add_child(scoreboard);
             }
-            const events = match?.events ?? [];
-            const latest = alert?.kind === 'score' ? events.filter(e => e.kind === 'Goal' && e.detail !== 'Missed Penalty').at(-1) : events.at(-1);
+            const latest = latestEvent(match, alert?.kind === 'score');
             if (latest && !spoiler) {
                 const eventLabel = this._label(eventSummary(latest), 'archsport-event');
                 // While the notch is opening the whole body already settles in; a second
