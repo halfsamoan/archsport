@@ -335,3 +335,18 @@ test('screen-reader notifications deduplicate alert keys and keep only the lates
     assert.match(source, /if \(visible && this\._activeAlert\) this\._announceAlert\(this\._activeAlert\)/);
     assert.match(source, /alertAnnouncement\(alert, this\._payload\.match, this\._settings\.get_boolean\('spoiler'\)\)/);
 });
+
+test('every inset focus ring sits on a painted background (St skips inset shadows without one)', () => {
+    // Generated CSS: template tokens contain braces that would split the rules.
+    const css = readFileSync(new URL('../extension/stylesheet.css', import.meta.url), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+    const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].map(([, selector, body]) => ({selector: selector.trim(), body}));
+    const painted = selector => rules.some(rule => rule.selector.split(',').map(s => s.trim()).includes(selector) &&
+        /background-color:\s*(?!transparent)/.test(rule.body));
+    for (const rule of rules.filter(rule => rule.selector.includes(':focus') && /box-shadow:\s*inset/.test(rule.body))) {
+        for (const selector of rule.selector.split(',').map(s => s.trim())) {
+            const base = selector.replace(':focus', '').split(' ')[0];
+            assert.ok(/background-color:/.test(rule.body) || painted(base), `${selector} ring would be invisible`);
+        }
+    }
+});

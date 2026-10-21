@@ -13,7 +13,7 @@
 .archsport-compact-button { min-height: 28px; padding: 0 6px; border-radius: 14px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: {{color.separatorSubtle}}; }
 .archsport-compact-button:active { background-color: {{color.pressedWash}}; }
-.archsport-compact-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
+.archsport-compact-button:focus { background-color: {{color.hoverWash}}; box-shadow: inset 0 0 0 2px {{color.focus}}; }
 .archsport-live { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; font-weight: 600; }
 .archsport-event-title { color: {{color.labelPrimary}}; font-size: {{typography.primary}}px; font-weight: 600; }
 .archsport-alert { color: {{color.accentWarning}}; font-size: {{typography.secondary}}px; font-weight: 600; }
@@ -34,9 +34,9 @@
 .archsport-icon-button { width: {{control.size}}px; height: {{control.size}}px; color: {{color.labelSecondary}}; border-radius: 8px; background-color: transparent; }
 .archsport-icon-button:hover { background-color: {{color.hoverWash}}; }
 .archsport-icon-button:active { background-color: {{color.pressedWash}}; }
-.archsport-icon-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
+.archsport-icon-button:focus { background-color: {{color.hoverWash}}; box-shadow: inset 0 0 0 2px {{color.focus}}; }
 .archsport-scoreboard { min-height: 64px; spacing: {{spacing.md}}px; }
-.archsport-scoreboard:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; border-radius: 10px; }
+.archsport-scoreboard:focus { background-color: {{color.hoverWash}}; box-shadow: inset 0 0 0 2px {{color.focus}}; border-radius: 10px; }
 .archsport-side { spacing: 8px; }
 .archsport-context-row { min-height: 30px; padding: 2px 0; }
 .archsport-context-row StIcon { color: {{color.labelTertiary}}; }
@@ -51,7 +51,7 @@
 .archsport-fixture-row { min-height: 22px; spacing: 8px; }
 /* Crest or short name; fixed so opponent names share one start line. */
 .archsport-fixture-lead { width: 36px; spacing: 4px; }
-.archsport-fixture-row:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; border-radius: 6px; }
+.archsport-fixture-row:focus { background-color: {{color.hoverWash}}; box-shadow: inset 0 0 0 2px {{color.focus}}; border-radius: 6px; }
 .archsport-fixture-names { spacing: 6px; }
 .archsport-direction { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
 /* 승/무/패 as a word in a shape, so the result never depends on colour alone. */
