@@ -15,7 +15,7 @@ import {createNotchSurface} from './notchSurface.js';
 import {DESIGN} from './designTokens.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement, latestEvent,
     liveMinuteLabel} from './uiModel.js';
-import {competitionLabel, displayTeam, fixturePresentation, teamCode} from './fixturePresentation.js';
+import {competitionLabel, displayTeam, fixtureDate, fixturePresentation, teamCode} from './fixturePresentation.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
 const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', 'poll-seconds', 'daily-budget', 'key-revision']);
@@ -590,7 +590,8 @@ export default class Archsport extends Extension {
         const shownStatus = spoiler && ['extra_time', 'penalties'].includes(match?.status) ? 'live' : match?.status;
         let clock = match ? `${STATUS[shownStatus] ?? '상태 미확인'} ${liveMinute}`.trim() : '';
         if (match?.status === 'scheduled' && match.kickoff_utc) {
-            clock = new Date(match.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'});
+            // Same 24-hour '오늘 04:00' / '10.24(토) 03:45' as the schedule rows.
+            clock = fixtureDate(new Date(match.kickoff_utc), new Date(), false);
         }
         // Green marks only a match that is being played right now, on data that is not stale.
         const liveNow = data.mode !== 'demo' && data.health !== 'error' && this._recentlyUpdated() &&
@@ -673,7 +674,7 @@ export default class Archsport extends Extension {
             identity.add_child(this._label(data.mode === 'demo' && alertTitle ? `시연 · ${alertTitle}` :
                 alertTitle || (data.mode === 'demo' ? '시연' : data.health === 'error' ?
                     (data.ui_version_mismatch ? '업데이트 적용 대기' : '오프라인') :
-                    clock ? [competition, clock].filter(Boolean).join(' · ') : '경기 정보'),
+                    clock ? [competition, clock].filter(Boolean).join(' · ') : '일정'),
                 alert ? 'archsport-event-title' : data.health === 'error' ? 'archsport-alert' :
                     liveNow ? 'archsport-live archsport-live-now' : 'archsport-live'));
             header.add_child(identity);
@@ -692,7 +693,14 @@ export default class Archsport extends Extension {
             if (alert?.kind === 'kickoff') {
                 const reminder = new St.BoxLayout({style_class: 'archsport-context-row'});
                 reminder.add_child(new St.Icon({icon_name: 'alarm-symbolic', icon_size: 17}));
-                reminder.add_child(this._label(`${alert.club}  ·  ${alert.opponent}`, 'archsport-event'));
+                // 'Barcelona vs PSG · 원정 · 오늘 04:00' in the short names the schedule rows use.
+                const fixture = [match, ...(data.context?.upcoming_matches ?? [])]
+                    .find(item => item && String(item.id) === String(alert.match_id));
+                const shown = fixture && fixturePresentation(fixture, this._settings.get_strv('watch-teams'));
+                reminder.add_child(this._label(shown ? [shown.watchedName ? `${shown.watchedName} vs ${shown.primary}` :
+                    shown.primary, shown.direction, shown.shortDate].filter(Boolean).join(' · ') :
+                    `${displayTeam({home: alert.club}, 'home')} vs ${displayTeam({home: alert.opponent}, 'home')}`,
+                'archsport-event'));
                 expandedBody.add_child(reminder);
             }
             if (scoreboardShown) {

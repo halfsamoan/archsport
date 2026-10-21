@@ -260,6 +260,10 @@ class ServiceTests(unittest.TestCase):
                 self.current['status'] = 'halftime'
                 payload = worker.poll(NOW + timedelta(seconds=2 * interval))
                 self.assertEqual(payload['alert']['kind'], 'status')
+                self.assertEqual(payload['alert']['title'], '하프타임')
+                self.current['status'] = 'live'
+                payload = worker.poll(NOW + timedelta(seconds=3 * interval))
+                self.assertEqual(payload['alert']['title'], '후반 시작')
 
     def test_long_gap_after_cooldown_rebaselines(self):
         self.config['poll_seconds'] = 300

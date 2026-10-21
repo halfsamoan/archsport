@@ -211,8 +211,9 @@ class Store:
                     goal_receipts = [goal['fingerprint'] for goal in _new_scoring_goals(previous, match)]
             elif previous['status'] != match['status']:
                 if match['status'] in ('live', 'halftime', 'extra_time', 'penalties', 'finished'):
+                    resumed = {'halftime': '후반 시작', 'interrupted': '경기 재개'}.get(previous['status'], '경기 진행')
                     alert = {'kind': 'status', 'title': {
-                        'live': '경기 진행', 'halftime': '하프타임',
+                        'live': resumed, 'halftime': '하프타임',
                         'extra_time': '연장전', 'penalties': '승부차기',
                         'finished': '경기 종료'}[match['status']]}
         core = lambda m: (m.get('home_score'), m.get('away_score'), m.get('status'),

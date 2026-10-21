@@ -99,3 +99,10 @@ test('spoiler mode hides scores and the extra time that would reveal a draw', as
     assert.match(source, /spoiler && \['extra_time', 'penalties'\]\.includes\(match\?\.status\) \? 'live' : match\?\.status/);
     assert.doesNotMatch(source, /● : ●/);
 });
+
+test('reminder, empty header and scheduled clock use the schedule rows wording', () => {
+    assert.match(source, /shown\.watchedName \? `\$\{shown\.watchedName\} vs \$\{shown\.primary\}`/);
+    assert.match(source, /clock = fixtureDate\(new Date\(match\.kickoff_utc\), new Date\(\), false\);/);
+    assert.doesNotMatch(source, /toLocaleString\('ko-KR', \{month: 'numeric'/);
+    assert.match(source, /clock \? \[competition, clock\]\.filter\(Boolean\)\.join\(' · '\) : '일정'\)/);
+});
