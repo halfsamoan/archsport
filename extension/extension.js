@@ -99,7 +99,11 @@ export default class Archsport extends Extension {
         this._indicator = new PanelMenu.Button(0.0, 'Archsport');
         this._indicator.add_child(new St.Icon({icon_name: 'x-office-calendar-symbolic', icon_size: 16,
             y_align: Clutter.ActorAlign.CENTER, accessible_name: '경기 일정'}));
-        this._indicator.menu.addAction('노치 펼치기 / 접기', () => this._toggle());
+        // The global shortcut is otherwise invisible; the menu names it next to the action.
+        const shortcut = this._settings.get_strv('archsport-toggle-shortcut')[0] ?? '';
+        const shortcutHint = shortcut.startsWith('KP_') ? `숫자패드 ${shortcut.slice(3)}` : shortcut;
+        this._indicator.menu.addAction(shortcutHint ? `노치 펼치기 / 접기 · ${shortcutHint}` : '노치 펼치기 / 접기',
+            () => this._toggle());
         this._indicator.menu.addAction('일정 · 최근 경기', openDashboard);
         this._indicator.menu.addAction('Archsport 설정', () => this._openPreferences());
         this._indicator.menu.addAction('데이터 다시 연결', () => this._restartWorker());
