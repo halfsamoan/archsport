@@ -230,6 +230,21 @@ class CompositeProviderTests(unittest.TestCase):
         provider().fetch(wednesday.replace(hour=18, minute=10))
         self.assertEqual(len(calls), 1)
 
+    def test_day_without_a_scheduled_match_looks_for_cup_ties_in_the_evening(self):
+        self.api_key.write_text('test-api-key', encoding='utf-8')
+        calls = []
+        wednesday = datetime(2026, 10, 21, 18, tzinfo=timezone.utc)
+        provider = CompositeProvider(self.config(), self.store)
+        provider.live = self.live(calls)
+        provider._scheduled = [self.fixture('Barcelona', wednesday + timedelta(days=1))]
+        provider.fetch(wednesday)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(provider.warning, '')  # normal operation, not an outage
+        # A day with a scheduled match keeps to that match's window.
+        provider._scheduled = [self.fixture('Barcelona', wednesday + timedelta(hours=3))]
+        provider.fetch(wednesday + timedelta(hours=1))
+        self.assertEqual(len(calls), 1)
+
     def test_live_match_found_during_schedule_outage_keeps_the_live_interval(self):
         self.api_key.write_text('test-api-key', encoding='utf-8')
         provider = CompositeProvider(self.config(), self.store)

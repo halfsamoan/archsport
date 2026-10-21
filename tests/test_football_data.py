@@ -79,6 +79,7 @@ class FootballDataTests(unittest.TestCase):
         self.assertIsNone(context['recent_stats'])
         self.assertFalse(context['stats_available'])
         self.assertIn('세부 스탯', context['schedule_notice'])
+        self.assertIn('컵 대회', context['schedule_notice'])
         schedule.fetch_context(NOW + timedelta(minutes=5))
         self.assertEqual(len(calls), len(date_windows(NOW.date())))
 

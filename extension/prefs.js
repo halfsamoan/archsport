@@ -68,7 +68,8 @@ export default class ArchsportPreferences extends ExtensionPreferences {
             return row;
         });
 
-        const data = new Adw.PreferencesGroup({title: '데이터', description: '일정은 football-data.org, 라이브 점수는 API-Football에서 받습니다.'});
+        const data = new Adw.PreferencesGroup({title: '데이터', description: '일정은 football-data.org, 라이브 점수는 API-Football에서 받습니다.\n' +
+            '컵 대회(코파 델 레이·코파 이탈리아 등)는 무료 일정에 없어 표시되지 않을 수 있습니다. 경기 없는 날 저녁에만 라이브 목록으로 찾아봅니다.'});
         page.add(data);
         const mode = new Adw.ComboRow({title: '데이터 모드', model: Gtk.StringList.new(['실제 경기', '시연 · 가상 경기']), selected: settings.get_string('mode') === 'demo' ? 1 : 0});
         mode.connect('notify::selected', () => settings.set_string('mode', mode.selected === 1 ? 'demo' : 'live'));

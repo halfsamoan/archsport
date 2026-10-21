@@ -77,3 +77,8 @@ test('a scorer is named only from an event list that accounts for every goal', a
     assert.equal(latestEvent({...match, events: [goal(61, 'First'), {kind: 'Goal', detail: 'Missed Penalty', player: 'Miss'}]}, true).player, 'First');
     assert.equal(latestEvent({home_score: 0, away_score: 0, events: [card]}).player, 'Booked');
 });
+
+test('settings say that cup ties are outside the free schedule', () => {
+    const prefs = readFileSync(new URL('../extension/prefs.js', import.meta.url), 'utf8');
+    assert.match(prefs, /컵 대회\(코파 델 레이·코파 이탈리아 등\)는 무료 일정에 없어 표시되지 않을 수 있습니다/);
+});

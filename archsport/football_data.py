@@ -257,6 +257,7 @@ class FootballDataSchedule:
             'schedule_delayed': True,
             'stats_available': False,
             'plan_limited': False,
-            'schedule_notice': '무료 일정은 지연될 수 있으며 경기별 세부 스탯은 제공되지 않습니다.',
+            'schedule_notice': '무료 일정은 지연될 수 있으며 경기별 세부 스탯은 제공되지 않습니다. '
+                               '컵 대회(코파 델 레이·코파 이탈리아 등)는 무료 일정에 없어 표시되지 않을 수 있습니다.',
         }
         return self.context

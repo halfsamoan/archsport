@@ -13,7 +13,8 @@ PROBE_BEFORE_KICKOFF = timedelta(0)
 PROBE_AFTER_KICKOFF = timedelta(minutes=30)
 LIVE_RETRY_GRACE = timedelta(minutes=15)
 STARTUP_LOOKBACK = timedelta(hours=4)
-# Without a usable schedule, look for watched matches only in European match hours (UTC).
+# On a day without a scheduled watched match (cup ties are not in the free schedule, or the
+# schedule is down), look for one only in European match hours (UTC).
 DISCOVERY_SECONDS = 30 * 60
 DISCOVERY_HOURS = {False: (time(17, 30), time(21, 30)), True: (time(11), time(21, 30))}  # weekend?
 DISCOVERY_NOTICE = '일정 없이 경기 시간대에만 30분마다 라이브를 확인합니다'
@@ -141,7 +142,7 @@ class CompositeProvider:
                 return 'kickoff'
             if self._startup_probe and -STARTUP_LOOKBACK <= remaining < -PROBE_AFTER_KICKOFF:
                 return 'startup'
-        if not self._scheduled:
+        if not any((kickoff := self._kickoff(match)) and kickoff.date() == now.date() for match in self._scheduled):
             start, end = DISCOVERY_HOURS[now.weekday() >= 5]
             state = self.store.cache_get(PROBE_STATE_KEY, {})
             last = state.get('discovery') if isinstance(state, dict) else None
@@ -153,6 +154,10 @@ class CompositeProvider:
         if match.get('status') != 'scheduled' or not any(
                 is_watched(match.get(side), self.schedule.watched) for side in ('home', 'away')):
             return None
+        return self._kickoff(match)
+
+    @staticmethod
+    def _kickoff(match):
         try:
             return utc_datetime(match.get('kickoff_utc'))
         except (TypeError, ValueError):
