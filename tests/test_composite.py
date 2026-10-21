@@ -44,7 +44,7 @@ class CompositeProviderTests(unittest.TestCase):
         provider = CompositeProvider(self.config(), self.store)
         scheduled = {'id': 'match:barcelona:sevilla:20261020', 'home': 'Barcelona'}
         scheduled.update(away='Sevilla', status='scheduled',
-                         kickoff_utc=(NOW + timedelta(minutes=1)).isoformat())
+                         kickoff_utc=(NOW - timedelta(minutes=1)).isoformat())
         provider.context = {'upcoming_matches': [scheduled]}
         provider._scheduled = [scheduled]
 
@@ -78,7 +78,10 @@ class CompositeProviderTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertIsNone(provider.next_poll_seconds)
 
-        near_kickoff = now + timedelta(hours=3, minutes=55)
+        # Nothing is listed before kickoff, so the first probe waits for it.
+        self.assertEqual(provider.fetch(now + timedelta(hours=3, minutes=55)), [])
+        self.assertEqual(calls, [])
+        near_kickoff = now + timedelta(hours=4)
         self.assertEqual(provider.fetch(near_kickoff), [])
         self.assertEqual(len(calls), 1)
         self.assertEqual(provider.next_poll_seconds, 300)
@@ -90,7 +93,7 @@ class CompositeProviderTests(unittest.TestCase):
         provider = CompositeProvider(config, self.store)
         fixture = {'id': 'match:barcelona:sevilla:20261018', 'home': 'Barcelona',
                    'away': 'Sevilla', 'status': 'scheduled',
-                   'kickoff_utc': (NOW + timedelta(minutes=1)).isoformat()}
+                   'kickoff_utc': (NOW - timedelta(minutes=1)).isoformat()}
         provider._scheduled = [fixture]
 
         class Live:
@@ -107,7 +110,7 @@ class CompositeProviderTests(unittest.TestCase):
         provider = CompositeProvider(self.config(), self.store)
         fixture = {'id': 'match:barcelona:sevilla:20261018', 'home': 'Barcelona',
                    'away': 'Sevilla', 'status': 'scheduled',
-                   'kickoff_utc': (NOW + timedelta(minutes=1)).isoformat()}
+                   'kickoff_utc': (NOW - timedelta(minutes=1)).isoformat()}
         provider._scheduled = [fixture]
         calls = []
 
@@ -177,6 +180,78 @@ class CompositeProviderTests(unittest.TestCase):
         provider.fetch(NOW + timedelta(minutes=5))
         provider.fetch(NOW + timedelta(minutes=10))
         self.assertEqual(len(calls), 2)
+
+    def live(self, calls, feed=()):
+        class Live:
+            warning = ''
+            def fetch(self, at, scheduled):
+                calls.append(at)
+                return [dict(match) for match in feed]
+        return Live()
+
+    def fixture(self, team, kickoff):
+        return {'id': f'match:{team}:{kickoff:%H%M}', 'home': team, 'away': 'Example FC', 'status': 'scheduled',
+                'kickoff_utc': kickoff.isoformat(), 'team_keys': [team.casefold(), None]}
+
+    def test_worker_restart_right_after_a_probe_defers_instead_of_probing_again(self):
+        self.api_key.write_text('test-api-key', encoding='utf-8')
+        calls = []
+        first = CompositeProvider(self.config(), self.store)
+        first._scheduled = [self.fixture('Barcelona', NOW - timedelta(minutes=1))]
+        first.live = self.live(calls)
+        first.fetch(NOW)
+        restarted = CompositeProvider(self.config(), self.store)
+        restarted._scheduled = first._scheduled
+        restarted.live = self.live(calls)
+        restarted.fetch(NOW + timedelta(minutes=1))
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(restarted.next_poll_seconds, 240)
+        restarted.fetch(NOW + timedelta(minutes=5))
+        self.assertEqual(len(calls), 2)
+
+    def test_schedule_outage_looks_for_matches_only_in_match_hours_and_says_so(self):
+        self.api_key.write_text('test-api-key', encoding='utf-8')
+        calls = []
+        wednesday = datetime(2026, 10, 21, 3, tzinfo=timezone.utc)
+
+        def provider():
+            value = CompositeProvider(self.config(), self.store)
+            value._schedule_warning = 'football-data.org 일정 키가 없습니다.'
+            value.live = self.live(calls)
+            return value
+
+        night = provider()
+        night.fetch(wednesday)
+        self.assertEqual(calls, [])
+        self.assertIn('경기 시간대에만', night.warning)
+        provider().fetch(wednesday.replace(hour=18))
+        self.assertEqual(len(calls), 1)
+        # The discovery spacing survives a restart.
+        provider().fetch(wednesday.replace(hour=18, minute=10))
+        self.assertEqual(len(calls), 1)
+
+    def test_live_match_found_during_schedule_outage_keeps_the_live_interval(self):
+        self.api_key.write_text('test-api-key', encoding='utf-8')
+        provider = CompositeProvider(self.config(), self.store)
+        provider._schedule_warning = 'football-data.org 일정 서버에 연결할 수 없습니다.'
+        provider.live = self.live([], [{'id': 'live', 'status': 'live'}])
+        provider.fetch(NOW)
+        self.assertEqual(provider.next_poll_seconds, 300)
+
+    def test_low_budget_is_kept_for_the_higher_priority_club(self):
+        self.api_key.write_text('test-api-key', encoding='utf-8')
+        config = {**self.config(), 'watch_teams': ['Barcelona', 'Lazio']}
+        calls = []
+        provider = CompositeProvider(config, self.store)
+        provider._scheduled = [self.fixture('Lazio', NOW - timedelta(minutes=1)),
+                               self.fixture('Barcelona', NOW + timedelta(hours=3))]
+        provider.live = self.live(calls)
+        self.store.db.execute('INSERT INTO requests VALUES (?, ?)', (NOW.date().isoformat(), 50))
+        provider.fetch(NOW)
+        self.assertEqual(calls, [])  # 40 left: Barcelona's evening match keeps them
+        self.store.db.execute('UPDATE requests SET count=10')
+        provider.fetch(NOW + timedelta(minutes=5))
+        self.assertEqual(len(calls), 1)
 
     def test_empty_schedule_also_checks_live_feed_on_cold_start(self):
         self.api_key.write_text('test-api-key', encoding='utf-8')

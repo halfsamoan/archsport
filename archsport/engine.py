@@ -128,6 +128,11 @@ class Store:
                 (day, budget))
             return cursor.rowcount == 1
 
+    def requests_used(self, day=None):
+        day = day or datetime.now(timezone.utc).date().isoformat()
+        row = self.db.execute('SELECT count FROM requests WHERE day=?', (day,)).fetchone()
+        return row[0] if row else 0
+
     def cache_get(self, key, default=None):
         row = self.db.execute('SELECT payload FROM cache WHERE key=?', (key,)).fetchone()
         return json.loads(row[0]) if row else default
