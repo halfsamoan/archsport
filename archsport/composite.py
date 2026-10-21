@@ -33,6 +33,7 @@ class CompositeProvider:
         self._last_live_seen = None
         self._last_schedule_outage_probe = None
         self._live_retry_until = None
+        self._live_error = ''
         self.next_poll_seconds = None
         self.retry_after_seconds = None
 
@@ -59,10 +60,13 @@ class CompositeProvider:
         probe = self._should_probe(now)
         self._startup_probe = False
         if not probe:
+            # A cooldown after a provider error (budget, quota) keeps saying why scores stopped.
+            cooling = self.retry_after_seconds is not None
             self.context['live_matches'] = []
-            self.context['live_available'] = None
-            self.context['live_notice'] = ''
-            self.warning = self._schedule_warning
+            self.context['live_available'] = False if cooling else None
+            self.context['live_notice'] = self._live_error if cooling else ''
+            self.warning = ' · '.join(message for message in
+                                      (self._schedule_warning, self.context['live_notice']) if message)
             if self._schedule_warning or not self._scheduled:
                 self.next_poll_seconds = (120 if self._schedule_warning and not self._scheduled
                                           else SCHEDULE_OUTAGE_LIVE_POLL_SECONDS)
@@ -77,7 +81,7 @@ class CompositeProvider:
             matches = self.live.fetch(now, self._scheduled)
         except ProviderError as exc:
             self.context['live_available'] = False
-            self.context['live_notice'] = str(exc)
+            self.context['live_notice'] = self._live_error = str(exc)
             if exc.retry_seconds:
                 self.retry_after_seconds = max(1, int(exc.retry_seconds))
                 self._live_retry_until = now + timedelta(seconds=self.retry_after_seconds)

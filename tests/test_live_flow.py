@@ -506,6 +506,38 @@ class ServiceTests(unittest.TestCase):
         self.assertNotIn('provisional', payload['context']['recent'][0])
         self.assertEqual(self.store.cache_get('provisional-results'), {})
 
+    def test_live_feed_failure_keeps_the_match_marked_offline_until_it_goes_stale(self):
+        state = {'feed': [copy.deepcopy(self.current)], 'available': True}
+
+        class Provider:
+            context = {}
+            retry_after_seconds = None
+            def load_context(self, now=None):
+                self.context = {'upcoming_matches': [], 'recent': []}
+                return self.context
+            def fetch(self):
+                self.context['live_available'] = state['available']
+                self.context['live_notice'] = '' if state['available'] else '설정한 일일 요청 예산에 도달했습니다'
+                return copy.deepcopy(state['feed'])
+
+        provider = Provider()
+        worker = Worker(self.config, self.store, provider)
+        worker.poll(NOW)
+        state.update(feed=[], available=False)
+        provider.retry_after_seconds = 4 * 3600
+        payload = worker.poll(NOW + timedelta(minutes=5))
+        self.assertEqual(payload['health'], 'error')
+        self.assertEqual(payload['match']['id'], self.current['id'])
+        self.assertTrue(payload['visible'])
+        self.assertEqual(payload['message'], '설정한 일일 요청 예산에 도달했습니다')
+        self.assertEqual(payload['updated_at'], NOW.isoformat())
+        # The cooldown is hours long, but the next poll lands when the snapshot goes stale.
+        self.assertEqual(payload['next_poll_seconds'], payload['stale_after_seconds'] - 300)
+        payload = worker.poll(NOW + timedelta(seconds=payload['stale_after_seconds'] + 1))
+        self.assertIsNone(payload['match'])
+        self.assertFalse(payload['visible'])
+        self.assertEqual(payload['health'], 'idle')
+
     def test_kickoff_reminder_is_visible_once_and_not_a_persistent_match(self):
         fixture = {'id': 'match:barcelona:sevilla:20261018', 'home': 'Barcelona', 'away': 'Sevilla',
                    'home_score': None, 'away_score': None, 'status': 'scheduled',

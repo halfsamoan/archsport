@@ -133,6 +133,12 @@ class Worker:
             self.last_success = now.isoformat()
             context = getattr(self.provider, 'context', context)
             self._merge_finals(context, now)
+            # The live feed failed (budget, quota, network) while a match was on: keep its last
+            # snapshot, marked offline with the reason, instead of letting the notch vanish.
+            stale_live = None
+            if isinstance(context, dict) and context.get('live_available') is False and not live and not alert_pair:
+                stale_live = self._fresh_live(now)
+                selected = stale_live or selected
             kickoff_alert, kickoff_match = self._kickoff_reminder(context, now) if not event_alert else (None, None)
             # The reminder view draws from the alert itself; a live match or final keeps the slot.
             if kickoff_alert and not selected:
@@ -147,6 +153,8 @@ class Worker:
             if final_left:
                 # Poll again when the final card is due to leave, so it never outstays its window.
                 interval = min(interval, max(15, final_left))
+            stale_left = (self.latest_seen[stale_live['id']] + self._stale_after_seconds() - now.timestamp()
+                          if stale_live else 0)
             retry_after = getattr(self.provider, 'retry_after_seconds', None)
             if retry_after:
                 # A provider quota/plan cooldown blocks that provider, while
@@ -158,15 +166,20 @@ class Worker:
                 recommended = getattr(self.provider, 'next_poll_seconds', None)
                 if recommended:
                     interval = min(interval, recommended)
+            if stale_left:
+                # Even through a long provider cooldown, poll once the snapshot goes stale so it leaves.
+                interval = max(15, min(interval, int(stale_left)))
             message = getattr(self.provider, 'warning', '')
             if not selected and not message:
                 message = '진행 중인 경기가 없습니다.'
             alert = event_alert or kickoff_alert
-            payload = {'mode': self.config['mode'], 'health': 'fresh' if selected and
-                       selected.get('status') in ('live', 'halftime', 'extra_time', 'penalties', 'interrupted') else 'idle',
-                       'match': selected, 'alert': alert, 'updated_at': self.last_success,
+            payload = {'mode': self.config['mode'], 'health': 'error' if stale_live else 'fresh' if selected and
+                       selected.get('status') in ACTIVE else 'idle',
+                       'match': selected, 'alert': alert,
+                       'updated_at': datetime.fromtimestamp(self.latest_seen[stale_live['id']], timezone.utc).isoformat()
+                       if stale_live else self.last_success,
                        'visible': match_visible(selected, now) or bool(kickoff_alert) or bool(final_left),
-                       'message': message,
+                       'message': context.get('live_notice') or message if stale_live else message,
                        'next_poll_seconds': interval,
                        'stale_after_seconds': self._stale_after_seconds(),
                        'context': context}
@@ -182,13 +195,10 @@ class Worker:
                         self.logos.decorate(fixture)
             self._merge_finals(context, now)
             kickoff_alert, kickoff_match = self._kickoff_reminder(context, now)
-            latest_id = max(self.latest_matches,
-                            key=lambda identifier: self.latest_seen.get(identifier, 0), default=None)
-            latest = self.latest_matches.get(latest_id) if latest_id is not None else None
             stale_after = self._stale_after_seconds()
-            fresh_match = latest and now.timestamp() - self.latest_seen.get(latest_id, 0) <= stale_after
+            fresh_match = self._fresh_live(now)
             if fresh_match:
-                selected = latest
+                selected = fresh_match
             elif kickoff_alert:
                 selected = kickoff_match
             payload = {'mode': self.config['mode'], 'health': 'error', 'message': message,
@@ -203,6 +213,14 @@ class Worker:
             payload['visible'] = True
         self.last_interval = payload.get('next_poll_seconds')
         return payload
+
+    def _fresh_live(self, now):
+        """The most recently seen in-play snapshot that is not stale yet, or None."""
+        fresh = [identifier for identifier, match in self.latest_matches.items()
+                 if match.get('status') in ACTIVE and
+                 0 <= now.timestamp() - self.latest_seen.get(identifier, 0) <= self._stale_after_seconds()]
+        latest = max(fresh, key=lambda identifier: self.latest_seen[identifier], default=None)
+        return self.latest_matches[latest] if latest is not None else None
 
     def _remember_final(self, match, now):
         results = self.store.cache_get(PROVISIONAL_KEY, {})

@@ -342,9 +342,9 @@ export default class Archsport extends Extension {
         return null;
     }
 
-    // Offline explains itself: what failed, how old the shown data is, and the one action
-    // that can fix it (settings for a key or budget problem, otherwise reconnect).
-    _statusRow(data) {
+    // Offline explains itself: what failed, how old the shown data is (or the given detail),
+    // and the one action that can fix it (settings for a key or budget problem, otherwise reconnect).
+    _statusRow(data, detail = null) {
         const row = new St.BoxLayout({style_class: 'archsport-status-row'});
         row.add_child(new St.Icon({icon_name: 'dialog-warning-symbolic', icon_size: 14,
             style_class: 'archsport-status-icon', y_align: Clutter.ActorAlign.START}));
@@ -357,14 +357,17 @@ export default class Archsport extends Extension {
         reasonLabel.clutter_text.set_ellipsize(Pango.EllipsizeMode.NONE);
         text.add_child(reasonLabel);
         const updated = Date.parse(data.updated_at ?? '');
-        if (!mismatch) {
+        if (detail) {
+            text.add_child(this._label(detail, 'archsport-date'));
+        } else if (!mismatch) {
             text.add_child(this._label(Number.isFinite(updated) ?
                 `마지막 갱신 ${new Date(updated).toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit', hour12: false})} · 아래는 그때 정보` :
                 '아직 받은 정보 없음', 'archsport-date'));
         }
         row.add_child(text);
         if (!mismatch) {
-            const settingsFix = /키|예산|설정|요금제|시즌/.test(reason);
+            // A spent quota only waits for its reset; reconnecting would just spend a refused request.
+            const settingsFix = /키|예산|할당량|설정|요금제|시즌/.test(reason);
             const action = new St.Button({label: settingsFix ? '설정 열기' : '다시 연결',
                 style_class: 'archsport-pill-button', can_focus: true, y_align: Clutter.ActorAlign.START});
             focusKey(action, 'status-action');
@@ -674,6 +677,8 @@ export default class Archsport extends Extension {
 
             if (data.health === 'error' && data.mode !== 'demo')
                 expandedBody.add_child(this._statusRow(data));
+            else if (data.mode !== 'demo' && data.context?.live_available === false && data.context.live_notice)
+                expandedBody.add_child(this._statusRow({message: data.context.live_notice}, '라이브 점수 없이 일정만 표시합니다'));
             if (alert?.kind === 'kickoff') {
                 const reminder = new St.BoxLayout({style_class: 'archsport-context-row'});
                 reminder.add_child(new St.Icon({icon_name: 'alarm-symbolic', icon_size: 17}));

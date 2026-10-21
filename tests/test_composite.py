@@ -125,6 +125,10 @@ class CompositeProviderTests(unittest.TestCase):
         provider.fetch(NOW + timedelta(minutes=5))
         self.assertEqual(len(calls), 1)
         self.assertEqual(provider.retry_after_seconds, 300)
+        # The cooldown still says why scores stopped.
+        self.assertIs(provider.context['live_available'], False)
+        self.assertEqual(provider.context['live_notice'], '일일 한도')
+        self.assertIn('일일 한도', provider.warning)
         provider.fetch(NOW + timedelta(minutes=10))
         self.assertEqual(len(calls), 2)
         self.assertIsNone(provider.retry_after_seconds)

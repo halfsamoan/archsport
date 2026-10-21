@@ -27,6 +27,11 @@ def seconds_until_utc_reset(now=None):
     return max(1, int((reset - now.astimezone(timezone.utc)).total_seconds()) + 5)
 
 
+def resume_time():
+    """Local clock time of the 00:00 UTC quota reset (09:00 in Korea)."""
+    return (datetime.now() + timedelta(seconds=seconds_until_utc_reset())).strftime('%H:%M')
+
+
 class ProviderError(Exception):
     def __init__(self, message, retry_seconds=None, plan_restricted=False):
         super().__init__(message)
@@ -88,10 +93,10 @@ class ApiFootball:
             self.remaining = None
             self._quota_day = today
         if self.remaining is not None and self.remaining <= 0:
-            raise ProviderError('공급사 API 일일 할당량을 모두 사용했습니다.',
+            raise ProviderError(f'공급사 API 일일 할당량을 모두 사용했습니다 · {resume_time()}에 재개',
                                 retry_seconds=seconds_until_utc_reset())
         if not self.store.reserve_request(self.config['daily_budget']):
-            raise ProviderError('설정한 일일 요청 예산에 도달했습니다.',
+            raise ProviderError(f'설정한 일일 요청 예산에 도달했습니다 · {resume_time()}에 재개',
                                 retry_seconds=seconds_until_utc_reset())
         request = Request('https://v3.football.api-sports.io/' + endpoint + '?' + urlencode(params),
                           headers={'x-apisports-key': self.key, 'Accept': 'application/json'})

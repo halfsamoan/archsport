@@ -52,3 +52,11 @@ test('one minute timer re-renders only while a running clock is shown and dies w
     assert.match(disable, /if \(this\._minuteTimer\) GLib\.source_remove\(this\._minuteTimer\);/);
     assert.match(source, /\['_timer', '_pendingAlertTimer', '_closingTimer', '_minuteTimer'\]/);
 });
+
+test('a failing live feed explains itself in the open notch', () => {
+    // Offline with a kept snapshot goes through health 'error'; otherwise the notice gets its own row.
+    assert.match(source, /data\.context\?\.live_available === false && data\.context\.live_notice\)\n\s+expandedBody\.add_child\(this\._statusRow\(\{message: data\.context\.live_notice\}, '라이브 점수 없이 일정만 표시합니다'\)\);/);
+    assert.match(source, /_statusRow\(data, detail = null\) \{/);
+    // Budget and quota messages lead to settings, never to a reconnect that spends a refused request.
+    assert.match(source, /\/키\|예산\|할당량\|설정\|요금제\|시즌\/\.test\(reason\)/);
+});

@@ -56,6 +56,8 @@ class ProviderTests(unittest.TestCase):
             provider.get('fixtures')
         self.assertGreater(caught.exception.retry_seconds, 0)
         self.assertLessEqual(caught.exception.retry_seconds, 24 * 60 * 60 + 5)
+        # The message names the local resume time of the 00:00 UTC reset.
+        self.assertRegex(str(caught.exception), r'\d\d:\d\d에 재개$')
 
     def test_pagination_not_silently_truncated(self):
         with self.assertRaises(ProviderError):
