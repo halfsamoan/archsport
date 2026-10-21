@@ -240,6 +240,11 @@ class FootballDataSchedule:
         upcoming = sorted(future_by_team.values(), key=lambda item: item['kickoff_utc'])
         recent = [item for item in normalized if item['status'] == 'finished' and
                   datetime.fromisoformat(item['kickoff_utc'].replace('Z', '+00:00')) <= now]
+        # A kicked-off match whose result the free feed has not published yet would otherwise
+        # vanish from both lists for hours; keep it on top of recent as 'result pending'.
+        recent += [{**item, 'result_pending': True} for item in normalized
+                   if item['status'] in ('scheduled', 'unknown') and RESULT_WAIT_FROM <= now -
+                   datetime.fromisoformat(item['kickoff_utc'].replace('Z', '+00:00')) <= RESULT_WAIT_UNTIL]
         recent.sort(key=lambda item: item['kickoff_utc'], reverse=True)
         self.context = {
             'upcoming': upcoming[0] if upcoming else None,

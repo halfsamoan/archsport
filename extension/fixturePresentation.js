@@ -107,7 +107,7 @@ export function fixturePresentation(fixture, watchedTeams, {result = false, spoi
     if (oneSide) {
         accessibleName = `${fullDate}, ${fixture?.[oneSide] ?? '감시 팀'} ${direction} 경기, 상대 ${fixture?.[opponent] ?? '미확인'}`;
         if (result) {
-            accessibleName += spoiler ? ', 결과 숨김' :
+            accessibleName += fixture?.result_pending ? ', 결과 확인 중' : spoiler ? ', 결과 숨김' :
                 `, ${ownGoals ?? '미확인'} 대 ${otherGoals ?? '미확인'}${outcomeKind ? ` ${OUTCOME_SPOKEN[outcomeKind]}` : ''}`;
         }
     } else {

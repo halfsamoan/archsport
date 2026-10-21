@@ -165,7 +165,9 @@ class FootballDataTests(unittest.TestCase):
             return Response(json.dumps({'matches': rows}).encode())
 
         schedule = FootballDataSchedule({'football_data_key_file': str(self.key_file)}, self.store, opener)
-        schedule.fetch_context(NOW)
+        pending = schedule.fetch_context(NOW)['recent'][0]
+        self.assertTrue(pending['result_pending'])
+        self.assertEqual(pending['away'], 'FC Barcelona')
         full = len(calls)
         schedule.fetch_context(NOW + timedelta(minutes=10))
         self.assertEqual(len(calls), full)  # still fresh
@@ -177,6 +179,7 @@ class FootballDataTests(unittest.TestCase):
         context = schedule.fetch_context(NOW + timedelta(minutes=95))
         self.assertEqual(len(calls), settled)  # result in: back to the six-hour cache
         self.assertEqual(context['recent'][0]['away_score'], 2)
+        self.assertNotIn('result_pending', context['recent'][0])
 
     def test_team_aliases_and_provider_neutral_fixture_match(self):
         self.assertEqual(canonical_team('FC Barcelona'), 'barcelona')

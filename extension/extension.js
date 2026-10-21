@@ -410,7 +410,9 @@ export default class Archsport extends Extension {
         names.add_child(this._label(presentation.primary, 'archsport-context-text'));
         if (presentation.direction) names.add_child(this._label(presentation.direction, 'archsport-direction'));
         row.add_child(names);
-        if (result && spoiler) {
+        if (result && fixture?.result_pending) {
+            row.add_child(this._label('결과 대기', 'archsport-date'));
+        } else if (result && spoiler) {
             row.add_child(this._label('결과 숨김', 'archsport-date'));
         } else if (result) {
             if (presentation.outcomeKind) {
