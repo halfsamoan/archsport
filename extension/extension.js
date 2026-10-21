@@ -13,7 +13,7 @@ import {DockParticipant, easeOnCurve} from './notchDock.js';
 import {isActorWithin} from './dockModel.js';
 import {createNotchSurface} from './notchSurface.js';
 import {DESIGN} from './designTokens.js';
-import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement} from './uiModel.js';
+import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement, liveMinuteLabel} from './uiModel.js';
 import {displayTeam, fixturePresentation, teamCode} from './fixturePresentation.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
@@ -53,7 +53,7 @@ export default class Archsport extends Extension {
         this._generation = (this._generation ?? 0) + 1;
         this._signals = [];
         this._timer = this._restartTimer = this._pendingAlertTimer = this._closingTimer = 0;
-        this._announcementTimer = 0;
+        this._announcementTimer = this._minuteTimer = 0;
         this._announcedAlertKeys ??= new Set();
         this._lastAnnouncementAt ??= null;
         this._queuedAnnouncement = null;
@@ -189,7 +189,7 @@ export default class Archsport extends Extension {
         this._sleeping = true;
         this._dock?.dock?.shutdown();
         this._stopWorker();
-        for (const name of ['_timer', '_pendingAlertTimer', '_closingTimer']) {
+        for (const name of ['_timer', '_pendingAlertTimer', '_closingTimer', '_minuteTimer']) {
             if (this[name]) GLib.source_remove(this[name]);
             this[name] = 0;
         }
@@ -574,8 +574,9 @@ export default class Archsport extends Extension {
         // Spoiler mode prints words, not two dots that read like a rendering glitch.
         const score = spoiler ? '숨김' : match ? `${match.home_score ?? '–'} : ${match.away_score ?? '–'}` : '– : –';
         const spokenScore = spoiler ? '점수 숨김' : match ? `${match.home_score ?? '미확인'} 대 ${match.away_score ?? '미확인'}` : '';
-        const liveMinute = match && match.elapsed != null && match.status !== 'finished' ?
-            `${match.elapsed}${match.extra ? `+${match.extra}` : ''}′` : '';
+        // Offline data stays as last reported; the status row says how old it is.
+        const liveMinute = data.health === 'error' ? liveMinuteLabel(match, null) :
+            liveMinuteLabel(match, data.updated_at, Date.now(), Math.ceil((data.next_poll_seconds ?? 300) / 60));
         let clock = match ? `${STATUS[match.status] ?? '상태 미확인'} ${liveMinute}`.trim() : '';
         if (match?.status === 'scheduled' && match.kickoff_utc) {
             clock = new Date(match.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'});
@@ -891,6 +892,20 @@ export default class Archsport extends Extension {
             this._timer = 0; this._activeAlert = null; this._alertAnimate = false; this._render(); this._showPendingAlert();
             return GLib.SOURCE_REMOVE;
         });
+        // One tick at each minute boundary of the estimate, only while a running clock is shown.
+        // Not while keyboard focus is inside: a rebuild every minute would re-read the focused row.
+        if (this._minuteTimer) GLib.source_remove(this._minuteTimer);
+        this._minuteTimer = 0;
+        const updated = Date.parse(data.updated_at ?? '');
+        if (this._dock.state.visible && data.health !== 'error' && Number.isFinite(updated) &&
+            ['live', 'extra_time'].includes(match?.status) && !isActorWithin(global.stage.get_key_focus(), this._root)) {
+            const untilTick = 60000 - (((Date.now() - updated) % 60000) + 60000) % 60000;
+            this._minuteTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, untilTick + 250, () => {
+                this._minuteTimer = 0;
+                this._render();
+                return GLib.SOURCE_REMOVE;
+            });
+        }
     }
 
     _startWorker() {
@@ -992,7 +1007,8 @@ export default class Archsport extends Extension {
         if (this._pendingAlertTimer) GLib.source_remove(this._pendingAlertTimer);
         if (this._closingTimer) GLib.source_remove(this._closingTimer);
         if (this._announcementTimer) GLib.source_remove(this._announcementTimer);
-        this._timer = this._pendingAlertTimer = this._closingTimer = this._announcementTimer = 0;
+        if (this._minuteTimer) GLib.source_remove(this._minuteTimer);
+        this._timer = this._pendingAlertTimer = this._closingTimer = this._announcementTimer = this._minuteTimer = 0;
         this._queuedAnnouncement = null;
         if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
         this._sleepSubscription = 0;

@@ -11,3 +11,44 @@ test('a finished match stays on the notch as 경기 종료 during the worker win
     assert.match(source, /finished: '경기 종료'/);
     assert.match(source, /match\?\.status === 'finished' \? '종료'/);
 });
+
+test('the live minute advances locally between polls without inventing stoppage time', async () => {
+    const {liveMinuteLabel} = await import('../extension/uiModel.js');
+    const at = Date.parse('2030-01-01T20:00:00Z');
+    const updated = '2030-01-01T20:00:00Z';
+    const live = (elapsed, extra = null, status = 'live') => ({status, elapsed, extra});
+    const later = minutes => at + minutes * 60000 + 1000;
+    assert.equal(liveMinuteLabel(live(61), updated, later(0)), '61′');
+    assert.equal(liveMinuteLabel(live(61), updated, later(3)), '64′');
+    // Never further than the next poll would have reported.
+    assert.equal(liveMinuteLabel(live(61), updated, later(9), 5), '66′');
+    assert.equal(liveMinuteLabel(live(61), updated, later(9), 10), '70′');
+    // A period's end is a ceiling: its stoppage time is unknown.
+    assert.equal(liveMinuteLabel(live(43), updated, later(2)), '45′');
+    assert.equal(liveMinuteLabel(live(43), updated, later(4)), '45+′');
+    assert.equal(liveMinuteLabel(live(88), updated, later(4)), '90+′');
+    assert.equal(liveMinuteLabel(live(90, 2), updated, later(0)), '90+2′');
+    assert.equal(liveMinuteLabel(live(90, 2), updated, later(1)), '90+′');
+    assert.equal(liveMinuteLabel(live(45), updated, later(2)), '45+′');
+    assert.equal(liveMinuteLabel(live(100, null, 'extra_time'), updated, later(7)), '105′');
+    assert.equal(liveMinuteLabel(live(100, null, 'extra_time'), updated, later(7), 10), '105+′');
+    // A stopped clock stays as reported.
+    assert.equal(liveMinuteLabel(live(45, null, 'halftime'), updated, later(6)), '45′');
+    assert.equal(liveMinuteLabel(live(120, null, 'penalties'), updated, later(6)), '120′');
+    assert.equal(liveMinuteLabel({status: 'finished', elapsed: 90}, updated, later(2)), '');
+    assert.equal(liveMinuteLabel(live(null), updated, later(2)), '');
+    // Unknown update time: no estimate.
+    assert.equal(liveMinuteLabel(live(61), null, later(3)), '61′');
+});
+
+test('one minute timer re-renders only while a running clock is shown and dies with the extension', () => {
+    assert.match(source, /liveMinuteLabel\(match, data\.updated_at, Date\.now\(\), Math\.ceil\(\(data\.next_poll_seconds \?\? 300\) \/ 60\)\)/);
+    assert.match(source, /data\.health === 'error' \? liveMinuteLabel\(match, null\)/);
+    const tick = source.slice(source.indexOf('// One tick at each minute boundary'), source.indexOf('    _startWorker()'));
+    assert.match(tick, /if \(this\._minuteTimer\) GLib\.source_remove\(this\._minuteTimer\);\n\s+this\._minuteTimer = 0;/);
+    assert.match(tick, /this\._dock\.state\.visible && data\.health !== 'error'/);
+    assert.match(tick, /\['live', 'extra_time'\]\.includes\(match\?\.status\)/);
+    const disable = source.slice(source.indexOf('    disable() {'));
+    assert.match(disable, /if \(this\._minuteTimer\) GLib\.source_remove\(this\._minuteTimer\);/);
+    assert.match(source, /\['_timer', '_pendingAlertTimer', '_closingTimer', '_minuteTimer'\]/);
+});

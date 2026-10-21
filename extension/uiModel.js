@@ -29,6 +29,24 @@ export function scoreDirection(previous, current, watchedTeams = []) {
         'watched' : 'opponent';
 }
 
+const PERIOD_ENDS = [45, 90, 105, 120];
+
+// Free-quota polls are 5–10 minutes apart, so a running clock advances locally from the last
+// snapshot: never further than the next poll, never through a period's end (stoppage reads
+// 45+′/90+′ because its length is unknown), and not at all while the clock stops (HT, shoot-out).
+// The next real poll replaces the estimate.
+export function liveMinuteLabel(match, updatedAt, now = Date.now(), maxMinutes = 5) {
+    const elapsed = match?.elapsed == null ? NaN : Number(match.elapsed);
+    if (!match || match.status === 'finished' || !Number.isInteger(elapsed)) return '';
+    const extra = Number.isInteger(match.extra) && match.extra > 0 ? match.extra : 0;
+    const reported = `${elapsed}${extra ? `+${extra}` : ''}′`;
+    const age = Math.floor((now - Date.parse(updatedAt ?? '')) / 60000);
+    const periodEnd = PERIOD_ENDS.find(end => elapsed <= end);
+    if (!['live', 'extra_time'].includes(match.status) || !(age > 0) || periodEnd === undefined) return reported;
+    const minute = elapsed === periodEnd ? Infinity : elapsed + Math.min(age, Math.max(0, maxMinutes));
+    return minute > periodEnd ? `${periodEnd}+′` : `${minute}′`;
+}
+
 const EVENT_LABELS = {
     'Normal Goal': '골', 'Own Goal': '자책골', 'Penalty': 'PK 골', 'Missed Penalty': 'PK 실축',
     'Yellow Card': '경고', 'Red Card': '퇴장', 'Second Yellow card': '경고 누적 퇴장',
