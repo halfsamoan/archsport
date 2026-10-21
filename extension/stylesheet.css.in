@@ -10,7 +10,7 @@
 .archsport-notch StLabel, .archsport-notch StButton { font-family: '{{typography.family}}'; }
 .archsport-notch.archsport-open { padding: 10px 14px 14px; spacing: {{spacing.sm}}px; }
 .archsport-compact { spacing: {{spacing.xs}}px; min-height: 28px; }
-.archsport-compact-button { height: 28px; padding: 0 6px; border-radius: 14px; background-color: transparent; }
+.archsport-compact-button { min-height: 28px; padding: 0 6px; border-radius: 14px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: {{color.separatorSubtle}}; }
 .archsport-compact-button:active { background-color: {{color.pressedWash}}; }
 .archsport-compact-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
@@ -49,15 +49,42 @@
 .archsport-result-score { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; font-weight: 600; }
 .archsport-fixture-row { min-height: 22px; spacing: 8px; }
 /* Crest or short name; fixed so opponent names share one start line. */
-.archsport-fixture-lead { width: 36px; }
+.archsport-fixture-lead { width: 36px; spacing: 4px; }
+.archsport-fixture-row:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; border-radius: 6px; }
+.archsport-fixture-names { spacing: 6px; }
+.archsport-direction { color: {{color.labelTertiary}}; font-size: {{typography.caption}}px; }
+/* 승/무/패 as a word in a shape, so the result never depends on colour alone. */
+.archsport-outcome { min-width: 18px; padding: 1px 4px; border-radius: 5px; text-align: center;
+    font-size: {{typography.caption}}px; font-weight: 700; }
+.archsport-outcome-win { background-color: {{color.labelPrimary}}; color: {{color.surfacePrimary}}; }
+.archsport-outcome-draw, .archsport-outcome-loss { background-color: {{color.surfaceTrack}}; color: {{color.labelSecondary}}; }
+.archsport-result-score { min-width: 34px; text-align: right; }
+.archsport-date-result { min-width: 30px; text-align: right; }
+/* Missing crest: the club's initials in a plain ring, clearly text and not an emblem. */
+.archsport-monogram { border-radius: 999px; border: 1px solid {{color.surfacePressed}}; padding: 0 4px; }
+.archsport-monogram-text { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; font-weight: 700; }
+.archsport-team-code { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; font-weight: 700; }
+.archsport-score-hidden { min-width: 100px; color: {{color.labelTertiary}}; font-size: {{typography.primary}}px; font-weight: 600; text-align: center; }
+.archsport-team-hidden { min-width: 0; color: {{color.labelTertiary}}; font-size: {{typography.secondary}}px; }
 .archsport-stats { min-height: 28px; spacing: {{spacing.md}}px; }
 .archsport-stat { color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; }
 
+.archsport-status-row { spacing: {{spacing.sm}}px; padding: 8px 10px; border-radius: 10px;
+    background-color: {{color.surfaceTrack}}; }
+.archsport-status-icon { color: {{color.accentWarning}}; margin-top: 2px; }
+.archsport-status-text { spacing: 2px; }
+.archsport-status-message { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; }
+.archsport-pill-button { color: {{color.labelPrimary}}; font-size: {{typography.secondary}}px; font-weight: 600;
+    padding: 4px 10px; border-radius: 999px; background-color: {{color.hoverWash}}; }
+.archsport-pill-button:hover { background-color: {{color.pressedWash}}; }
+.archsport-pill-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
+
 .archsport-context-toggle {
-    color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; font-weight: 500;
-    padding: {{spacing.xs}}px 0; background-color: transparent;
+    color: {{color.labelSecondary}}; font-size: {{typography.secondary}}px; font-weight: 600;
+    padding: {{spacing.xs}}px 12px; border-radius: 999px; background-color: {{color.hoverWash}};
 }
-.archsport-context-toggle:hover { color: {{color.labelPrimary}}; }
+.archsport-context-toggle-content { spacing: 4px; }
+.archsport-context-toggle:hover { color: {{color.labelPrimary}}; background-color: {{color.pressedWash}}; }
 .archsport-context-toggle:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
 
 /* Digits that change in place keep their width. */

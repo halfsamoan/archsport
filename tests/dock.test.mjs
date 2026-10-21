@@ -17,9 +17,11 @@ test('score event celebrates only a verified watched-team increase', () => {
 
 test('event summary stays readable with extra time and missing provider fields', () => {
     assert.equal(eventSummary({kind: 'Goal', elapsed: 90, extra: 3, player: 'A. Player',
-        detail: 'Normal Goal'}), '90+3′ · A. Player');
-    assert.equal(eventSummary({kind: 'Goal', elapsed: 74, player: '', detail: 'Own Goal'}), '74′ · Own Goal');
-    assert.equal(eventSummary({kind: 'Var', detail: 'Goal cancelled'}), 'Goal cancelled');
+        detail: 'Normal Goal'}), '골 · 90+3′ · A. Player');
+    assert.equal(eventSummary({kind: 'Goal', elapsed: 74, player: '', detail: 'Own Goal'}), '자책골 · 74′');
+    assert.equal(eventSummary({kind: 'Var', detail: 'Goal cancelled'}), 'VAR 골 취소');
+    assert.equal(eventSummary({kind: 'Card', elapsed: 58, player: 'Gavi', detail: 'Yellow Card'}), '경고 · 58′ · Gavi');
+    assert.equal(eventSummary({kind: 'subst', elapsed: 70, player: 'Pedri', detail: 'Substitution 1'}), '교체 · 70′ · Pedri');
     assert.equal(eventSummary({}), '경기 상황');
 });
 
@@ -29,7 +31,7 @@ test('goal announcements include score and scorer except in spoiler mode', () =>
         events: [{kind: 'Goal', elapsed: 61, player: 'A. Player', detail: 'Normal Goal'}]};
     const full = alertAnnouncement(alert, match);
     assert.match(full, /Barcelona 2 대 1 Como/);
-    assert.match(full, /61′ · A\. Player/);
+    assert.match(full, /골 · 61′ · A\. Player/);
     const hidden = alertAnnouncement(alert, match, true);
     assert.equal(hidden, '스코어 변경 알림');
     assert.doesNotMatch(hidden, /Barcelona|Como|2|1|A\. Player/);
@@ -223,8 +225,10 @@ test('compact row fits the 34 px slab and the open notch has no forehead', async
     const {DESIGN} = await import('../extension/designTokens.js');
     const css = readFileSync(new URL('../extension/stylesheet.css', import.meta.url), 'utf8');
     const [, compactY] = css.match(/\.archsport-notch \{[^}]*padding: (\d+)px \d+px;/);
-    const [, button] = css.match(/\.archsport-compact-button \{ height: (\d+)px/);
+    const [, button] = css.match(/\.archsport-compact-button \{ min-height: (\d+)px/);
     assert.equal(2 * Number(compactY) + Number(button), DESIGN.control.compactHeight);
+    // Large Text grows the pill from its measured height instead of clipping pt-sized text.
+    assert.doesNotMatch(css, /font-size: [\d.]+px/);
     const [, top, side, bottom] = css.match(/\.archsport-notch\.archsport-open \{ padding: (\d+)px (\d+)px (\d+)px;/).map(Number);
     assert.ok(top <= 12);
     assert.equal(side, bottom);
@@ -232,6 +236,7 @@ test('compact row fits the 34 px slab and the open notch has no forehead', async
     const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
     assert.match(source, /chromeHeight: rootNode\.get_vertical_padding\(\) \+ rootNode\.get_length\('spacing'\)/);
     assert.match(source, /this\._contentHeight = viewport\.rootHeight;/);
+    assert.match(source, /this\._compactHeight = Math\.max\(DESIGN\.control\.compactHeight, Math\.ceil\(compactNatural\)\);/);
 });
 
 test('content motion rides the slab curve and enters from the panel edge', () => {
@@ -272,8 +277,10 @@ test('expanded height is measured from styled actors without a fudge factor', ()
 test('fixture rows share a fixed lead column and shoot-out scores respect spoiler mode', () => {
     const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
     const css = readFileSync(new URL('../extension/stylesheet.css', import.meta.url), 'utf8');
-    assert.match(css, /\.archsport-fixture-lead \{ width: \d+px; \}/);
-    assert.equal(source.match(/add_child\(this\._fixtureLead\(/g)?.length, 2);
+    assert.match(css, /\.archsport-fixture-lead \{ width: \d+px;/);
+    // Schedule and result rows share one builder, so their columns cannot drift apart.
+    assert.equal(source.match(/add_child\(this\._fixtureLead\(/g)?.length, 1);
+    assert.equal(source.match(/this\._fixtureRow\(/g)?.length, 2);
     assert.match(source, /\} else if \(!spoiler && match\?\.home_penalties != null\) \{/);
     assert.match(source, /\$\{match\.home_penalties\} : \$\{match\.away_penalties\}`, 'archsport-result-score'\)/);
 });

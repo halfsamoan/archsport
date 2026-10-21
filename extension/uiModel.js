@@ -29,14 +29,24 @@ export function scoreDirection(previous, current, watchedTeams = []) {
         'watched' : 'opponent';
 }
 
+const EVENT_LABELS = {
+    'Normal Goal': '골', 'Own Goal': '자책골', 'Penalty': 'PK 골', 'Missed Penalty': 'PK 실축',
+    'Yellow Card': '경고', 'Red Card': '퇴장', 'Second Yellow card': '경고 누적 퇴장',
+    'Goal cancelled': 'VAR 골 취소', 'Goal Disallowed': 'VAR 골 취소', 'Penalty confirmed': 'VAR PK 확정',
+    'Penalty cancelled': 'VAR PK 취소', 'Card upgrade': 'VAR 카드 변경',
+};
+
+// '골 · 61′ · R. Lewandowski': what happened first, so a card never reads like a goal.
 export function eventSummary(event) {
     if (!event) return '';
     const elapsed = Number.isInteger(event.elapsed) ? `${event.elapsed}${Number.isInteger(event.extra) &&
         event.extra > 0 ? `+${event.extra}` : ''}′` : '';
     const player = String(event.player ?? '').trim();
     const rawDetail = String(event.detail ?? '').trim();
-    const detail = event.kind === 'Goal' && rawDetail === 'Normal Goal' ? '' : rawDetail;
-    return [elapsed, player, detail].filter(Boolean).join(' · ') || '경기 상황';
+    const kind = String(event.kind ?? '').toLowerCase();
+    const label = EVENT_LABELS[rawDetail] ?? (kind === 'goal' ? '골' : kind === 'subst' ? '교체' :
+        kind === 'var' ? `VAR${rawDetail ? ` ${rawDetail}` : ''}` : kind === 'card' ? '카드' : rawDetail);
+    return [label, elapsed, player].filter(Boolean).join(' · ') || '경기 상황';
 }
 
 export function alertAnnouncement(alert, match, spoiler = false) {
