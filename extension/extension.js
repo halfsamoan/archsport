@@ -97,8 +97,10 @@ export default class Archsport extends Extension {
             staleIndicator.destroy();
         }
         this._indicator = new PanelMenu.Button(0.0, 'Archsport');
-        this._indicator.add_child(new St.Icon({icon_name: 'x-office-calendar-symbolic', icon_size: 16,
-            y_align: Clutter.ActorAlign.CENTER, accessible_name: '경기 일정'}));
+        // Own symbolic mark (pitch + ball): the stock calendar icon read as the clock's neighbour.
+        this._indicator.add_child(new St.Icon({style_class: 'system-status-icon',
+            gicon: Gio.icon_new_for_string(GLib.build_filenamev([this.path, 'icons', 'archsport-symbolic.svg'])),
+            y_align: Clutter.ActorAlign.CENTER, accessible_name: '경기 정보'}));
         // The global shortcut is otherwise invisible; the menu names it next to the action.
         const shortcut = this._settings.get_strv('archsport-toggle-shortcut')[0] ?? '';
         const shortcutHint = shortcut.startsWith('KP_') ? `숫자패드 ${shortcut.slice(3)}` : shortcut;
