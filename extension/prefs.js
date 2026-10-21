@@ -124,9 +124,9 @@ export default class ArchsportPreferences extends ExtensionPreferences {
         spin(data, 'poll-seconds', '경기 중 갱신 간격', '300–600초 · 짧을수록 API 사용량이 늘어납니다', 300, 600, 60);
         spin(data, 'daily-budget', '하루 API 요청 상한', '무료 요금제는 하루 100회 · 기본 90', 0, 100000, 10);
 
-        const notch = new Adw.PreferencesGroup({title: '노치', description: '상단 패널 아래에 경기 중에만 나타납니다.'});
+        const notch = new Adw.PreferencesGroup({title: '노치', description: '상단 패널 아래에 경기 중에 저절로 나타납니다. 단축키와 메뉴로는 언제든 열 수 있습니다.'});
         page.add(notch);
-        for (const [keyName, title, subtitle] of [['show-notch', '경기 중 노치 표시', ''],
+        for (const [keyName, title, subtitle] of [['show-notch', '경기 중 자동 표시', '꺼도 단축키·메뉴로 직접 여는 일정은 열립니다'],
             ['expand-on-event', '골·경기 상태가 바뀌면 펼치기', ''],
             ['hide-fullscreen', '전체화면에서 숨기기', ''],
             ['spoiler', '스포일러 숨기기', '점수와 득점자를 가리고 알림을 펼치지 않습니다']]) {

@@ -255,8 +255,9 @@ export default class Archsport extends Extension {
         const active = this._payload.visible !== false && this._recentlyUpdated() &&
             (this._payload.mode === 'demo' && Boolean(match) ||
                 ['live', 'halftime', 'extra_time', 'penalties', 'interrupted', 'finished'].includes(match?.status));
-        const allowed = this._settings.get_boolean('show-notch') && !this._sleeping &&
-            (active || Boolean(this._activeAlert) || this._expanded);
+        // The switch stops only the automatic notch; a dashboard the user opened always shows.
+        const allowed = !this._sleeping && (this._expanded ||
+            this._settings.get_boolean('show-notch') && (active || Boolean(this._activeAlert)));
         const fullscreen = this._settings.get_boolean('hide-fullscreen') && this._monitor()?.inFullscreen;
         const monitor = this._monitor();
         const expanded = this._expanded || Boolean(this._activeAlert);

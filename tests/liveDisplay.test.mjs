@@ -82,3 +82,9 @@ test('settings say that cup ties are outside the free schedule', () => {
     const prefs = readFileSync(new URL('../extension/prefs.js', import.meta.url), 'utf8');
     assert.match(prefs, /컵 대회\(코파 델 레이·코파 이탈리아 등\)는 무료 일정에 없어 표시되지 않을 수 있습니다/);
 });
+
+test('turning the automatic notch off never makes the shortcut or menu dead', () => {
+    assert.match(source, /const allowed = !this\._sleeping && \(this\._expanded \|\|\n\s+this\._settings\.get_boolean\('show-notch'\) && \(active \|\| Boolean\(this\._activeAlert\)\)\);/);
+    const prefs = readFileSync(new URL('../extension/prefs.js', import.meta.url), 'utf8');
+    assert.match(prefs, /\['show-notch', '경기 중 자동 표시'/);
+});
