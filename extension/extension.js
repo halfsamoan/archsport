@@ -29,6 +29,20 @@ const firstFocusable = actor => {
     }
     return null;
 };
+// Rebuilt widgets carry a stable _focusKey so a rerender returns focus to the same control.
+const findFocusKey = (actor, key) => {
+    if (!key) return null;
+    for (const child of actor.get_children()) {
+        if (child._focusKey === key && child.can_focus && child.reactive) return child;
+        const nested = findFocusKey(child, key);
+        if (nested) return nested;
+    }
+    return null;
+};
+const focusKey = (actor, key) => {
+    actor._focusKey = key;
+    return actor;
+};
 
 export default class Archsport extends Extension {
     enable() {
@@ -58,8 +72,11 @@ export default class Archsport extends Extension {
         this._payload = {mode: 'live', health: 'loading', visible: false, message: '경기 정보 연결 중'};
         this._settings = this.getSettings();
         this._interface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        // The root stays non-reactive so the transparent ears pass clicks through, and so it
+        // must not take focus: St marks it :insensitive and key events skip it (Tab and Esc died
+        // there). Focus goes to real controls; Esc is caught at the stage below.
         this._root = new St.BoxLayout({vertical: true, style_class: 'archsport-notch',
-            reactive: false, can_focus: true,
+            reactive: false, can_focus: false,
             accessible_name: 'Archsport 경기 노치', clip_to_allocation: true});
         // St.FocusManager uses this group to include notch controls in keyboard traversal.
         global.focus_manager.add_group(this._root);
@@ -70,19 +87,8 @@ export default class Archsport extends Extension {
             this._activeAlert = null;
             this._alertAnimate = false;
             this._render();
-            if (this._dock.state.visible) this._root.grab_key_focus();
+            if (this._dock.state.visible) this._focusPrimary();
         };
-        this._root.connect('key-press-event', (_actor, event) => {
-            const key = event.get_key_symbol();
-            if (key === Clutter.KEY_Escape) {
-                this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render();
-                return Clutter.EVENT_STOP;
-            }
-            if ([Clutter.KEY_Return, Clutter.KEY_space].includes(key)) {
-                this._toggle(); return Clutter.EVENT_STOP;
-            }
-            return Clutter.EVENT_PROPAGATE;
-        });
         this._surface = createNotchSurface(this._root);
         Main.layoutManager.addChrome(this._surface, {affectsStruts: false, trackFullscreen: false});
         const staleIndicator = Main.panel.statusArea[this.uuid];
@@ -112,6 +118,12 @@ export default class Archsport extends Extension {
         // Global shortcut (numpad Enter by default). The Shell grab keeps the key from apps.
         Main.wm.addKeybinding('archsport-toggle-shortcut', this._settings, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
             Shell.ActionMode.NORMAL, () => this._toggle());
+        this._connect(global.stage, 'key-press-event', (_stage, event) => {
+            if (event.get_key_symbol() !== Clutter.KEY_Escape ||
+                !isActorWithin(global.stage.get_key_focus(), this._root)) return Clutter.EVENT_PROPAGATE;
+            this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render();
+            return Clutter.EVENT_STOP;
+        });
         this._connect(Main.layoutManager, 'monitors-changed', () => this._visibility());
         this._connect(Main.panel, 'destroy', () => this._beginShellShutdown());
         this._connect(this._root, 'destroy', () => this._beginShellShutdown());
@@ -199,7 +211,13 @@ export default class Archsport extends Extension {
         this._activeAlert = null;
         this._alertAnimate = false;
         this._render();
-        if (expanding && this._dock.state.visible) this._root.grab_key_focus();
+        if (expanding && this._dock.state.visible) this._focusPrimary();
+    }
+
+    // Opening lands on the header anchor: a screen reader announces the match or schedule
+    // summary first, and the next Tab reaches the first fixture or scoreboard.
+    _focusPrimary() {
+        (this._primaryFocus?.get_parent() ? this._primaryFocus : firstFocusable(this._root))?.grab_key_focus();
     }
 
     _releaseFocus() {
@@ -342,6 +360,7 @@ export default class Archsport extends Extension {
             const settingsFix = /키|예산|설정|요금제|시즌/.test(reason);
             const action = new St.Button({label: settingsFix ? '설정 열기' : '다시 연결',
                 style_class: 'archsport-pill-button', can_focus: true, y_align: Clutter.ActorAlign.START});
+            focusKey(action, 'status-action');
             action.connect('clicked', () => settingsFix ? this._openPreferences() : this._restartWorker(0));
             row.add_child(action);
         }
@@ -380,8 +399,8 @@ export default class Archsport extends Extension {
     _fixtureRow(fixture, {result = false, spoiler = false} = {}) {
         const presentation = fixturePresentation(fixture, this._settings.get_strv('watch-teams'),
             {result, spoiler});
-        const row = new St.BoxLayout({style_class: 'archsport-fixture-row', can_focus: true,
-            accessible_name: presentation.accessibleName});
+        const row = focusKey(new St.BoxLayout({style_class: 'archsport-fixture-row', can_focus: true, reactive: true,
+            accessible_name: presentation.accessibleName}), `fixture:${fixture?.id ?? presentation.accessibleName}`);
         row.add_child(this._fixtureLead(fixture, presentation));
         const names = new St.BoxLayout({style_class: 'archsport-fixture-names', x_expand: true});
         names.add_child(this._label(presentation.primary, 'archsport-context-text'));
@@ -524,6 +543,8 @@ export default class Archsport extends Extension {
     _render(afterCollapse = false) {
         if (!this._enabled || this._shellEnding) return;
         const focusWasInside = isActorWithin(global.stage.get_key_focus(), this._root);
+        const focusedKey = focusWasInside ? global.stage.get_key_focus()?._focusKey : null;
+        this._primaryFocus = null;
         if (this._timer) { GLib.source_remove(this._timer); this._timer = 0; }
         const now = GLib.get_monotonic_time() / 1000;
         const spoiler = this._settings.get_boolean('spoiler');
@@ -613,7 +634,11 @@ export default class Archsport extends Extension {
         } else {
             this._root.add_style_class_name('archsport-open');
             const header = new St.BoxLayout({style_class: 'archsport-header'});
-            const identity = new St.BoxLayout({style_class: 'archsport-identity', x_expand: true});
+            // Focus anchor on open: it receives keys (Tab, Esc) and its name is read first, but it
+            // draws no ring, so opening with the mouse shows no stray focus box; Tab reveals rings.
+            const identity = focusKey(new St.BoxLayout({style_class: 'archsport-identity', x_expand: true,
+                reactive: true, can_focus: true}), 'anchor');
+            this._primaryFocus = identity;
             // The scoreboard below already carries both marks; a kickoff reminder without one
             // borrows the watched club's real crest. The schedule view stays text-only.
             const scoreboardShown = Boolean(match) && match.status !== 'scheduled';
@@ -628,8 +653,8 @@ export default class Archsport extends Extension {
                     liveNow ? 'archsport-live archsport-live-now' : 'archsport-live'));
             header.add_child(identity);
             const tools = new St.BoxLayout({style_class: 'archsport-tools'});
-            tools.add_child(this._iconButton('preferences-system-symbolic', '설정', () => this._openPreferences()));
-            tools.add_child(this._iconButton('pan-up-symbolic', '접기', () => { this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render(); }));
+            tools.add_child(focusKey(this._iconButton('preferences-system-symbolic', '설정', () => this._openPreferences()), 'settings'));
+            tools.add_child(focusKey(this._iconButton('pan-up-symbolic', '접기', () => { this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render(); }), 'collapse'));
             header.add_child(tools);
             this._root.add_child(header);
             expandedHeader = header;
@@ -644,7 +669,9 @@ export default class Archsport extends Extension {
                 expandedBody.add_child(reminder);
             }
             if (scoreboardShown) {
-                const scoreboard = new St.BoxLayout({style_class: 'archsport-scoreboard', x_expand: true});
+                const scoreboard = focusKey(new St.BoxLayout({style_class: 'archsport-scoreboard', x_expand: true,
+                    reactive: true, can_focus: true,
+                    accessible_name: `홈 ${match.home} 대 원정 ${match.away}, ${spokenScore}, ${clock}`}), 'scoreboard');
                 const home = new St.BoxLayout({style_class: 'archsport-side', vertical: true, x_expand: true});
                 const homeLogo = this._teamMark(match, 'home', 34);
                 homeLogo.x_align = Clutter.ActorAlign.CENTER;
@@ -710,6 +737,7 @@ export default class Archsport extends Extension {
                     const contextToggle = new St.Button({child: toggleContent, x_align: Clutter.ActorAlign.CENTER,
                         style_class: 'archsport-context-toggle', can_focus: true,
                         accessible_name: this._showContext ? '다른 경기와 일정 접기' : '다른 경기와 일정 보기'});
+                    focusKey(contextToggle, 'context');
                     contextToggle.connect('clicked', () => { this._showContext = !this._showContext; this._render(); });
                     expandedBody.add_child(contextToggle);
                 }
@@ -845,7 +873,9 @@ export default class Archsport extends Extension {
         }
         this._renderedExpanded = expanded;
         this._root.accessible_name = `Archsport. ${match ? `${match.home} 대 ${match.away}, ${spokenScore}` : '경기 정보'}. ${clock}`;
-        if (expanded && focusWasInside) firstFocusable(this._root)?.grab_key_focus();
+        if (this._primaryFocus) this._primaryFocus.accessible_name = this._root.accessible_name;
+        if (expanded && focusWasInside)
+            (findFocusKey(this._root, focusedKey) ?? this._primaryFocus ?? firstFocusable(this._root))?.grab_key_focus();
         if (alert) this._timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Math.max(1, Math.round(this._alertDeadline - now)), () => {
             this._timer = 0; this._activeAlert = null; this._alertAnimate = false; this._render(); this._showPendingAlert();
             return GLib.SOURCE_REMOVE;

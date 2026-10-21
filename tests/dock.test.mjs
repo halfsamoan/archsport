@@ -299,8 +299,13 @@ test('closing releases notch focus and only grabs the root while visible', () =>
     assert.match(source, /_returnWindow = global\.display\.get_focus_window\(\)/);
     assert.match(source, /_releaseFocus\(\) \{[\s\S]*?global\.stage\.set_key_focus\(null\);[\s\S]*?win\.focus\(global\.get_current_time\(\)\)/);
     assert.match(source, /if \(closing\) this\._releaseFocus\(\);/);
-    assert.match(source, /if \(expanding && this\._dock\.state\.visible\) this\._root\.grab_key_focus\(\)/);
-    assert.match(source, /if \(this\._dock\.state\.visible\) this\._root\.grab_key_focus\(\)/);
+    assert.match(source, /if \(expanding && this\._dock\.state\.visible\) this\._focusPrimary\(\)/);
+    assert.match(source, /if \(this\._dock\.state\.visible\) this\._focusPrimary\(\)/);
+    // A non-reactive St root is :insensitive and never gets key events, so it must not hold focus
+    // and Escape is handled at the stage while focus is inside the notch.
+    assert.match(source, /reactive: false, can_focus: false,/);
+    assert.doesNotMatch(source, /this\._root\.grab_key_focus\(\)/);
+    assert.match(source, /global\.stage, 'key-press-event'[\s\S]*?KEY_Escape[\s\S]*?isActorWithin\(global\.stage\.get_key_focus\(\), this\._root\)/);
 });
 
 test('overview and hidden fullscreen collapse Archsport unless an alert is active', () => {
@@ -315,7 +320,9 @@ test('keyboard focus stays in the notch after render rebuilds its controls', () 
     const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
     assert.match(source, /global\.focus_manager\.add_group\(this\._root\)/);
     assert.match(source, /const focusWasInside = isActorWithin\(global\.stage\.get_key_focus\(\), this\._root\);/);
-    assert.match(source, /if \(expanded && focusWasInside\) firstFocusable\(this\._root\)\?\.grab_key_focus\(\)/);
+    assert.match(source, /\(findFocusKey\(this\._root, focusedKey\) \?\? this\._primaryFocus \?\? firstFocusable\(this\._root\)\)\?\.grab_key_focus\(\)/);
+    // Focusable information rows stay reactive, otherwise focus on them is a dead end too.
+    assert.match(source, /'archsport-fixture-row', can_focus: true, reactive: true/);
     assert.match(source, /const firstFocusable = actor => \{[\s\S]*?child\.can_focus && child\.reactive/);
 });
 

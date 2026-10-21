@@ -36,6 +36,7 @@
 .archsport-icon-button:active { background-color: {{color.pressedWash}}; }
 .archsport-icon-button:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; }
 .archsport-scoreboard { min-height: 64px; spacing: {{spacing.md}}px; }
+.archsport-scoreboard:focus { box-shadow: inset 0 0 0 2px {{color.focus}}; border-radius: 10px; }
 .archsport-side { spacing: 8px; }
 .archsport-context-row { min-height: 30px; padding: 2px 0; }
 .archsport-context-row StIcon { color: {{color.labelTertiary}}; }
