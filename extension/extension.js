@@ -582,9 +582,13 @@ export default class Archsport extends Extension {
         const score = spoiler ? '숨김' : match ? `${match.home_score ?? '–'} : ${match.away_score ?? '–'}` : '– : –';
         const spokenScore = spoiler ? '점수 숨김' : match ? `${match.home_score ?? '미확인'} 대 ${match.away_score ?? '미확인'}` : '';
         // Offline data stays as last reported; the status row says how old it is.
-        const liveMinute = data.health === 'error' ? liveMinuteLabel(match, null) :
-            liveMinuteLabel(match, data.updated_at, Date.now(), Math.ceil((data.next_poll_seconds ?? 300) / 60));
-        let clock = match ? `${STATUS[match.status] ?? '상태 미확인'} ${liveMinute}`.trim() : '';
+        const minuteCap = Math.ceil((data.next_poll_seconds ?? 300) / 60);
+        const minuteOf = fixture => data.health === 'error' ? liveMinuteLabel(fixture, null, 0, 0, spoiler) :
+            liveMinuteLabel(fixture, data.updated_at, Date.now(), minuteCap, spoiler);
+        const liveMinute = minuteOf(match);
+        // Spoiler mode: extra time or a shoot-out would reveal a draw, so both read as 진행 중.
+        const shownStatus = spoiler && ['extra_time', 'penalties'].includes(match?.status) ? 'live' : match?.status;
+        let clock = match ? `${STATUS[shownStatus] ?? '상태 미확인'} ${liveMinute}`.trim() : '';
         if (match?.status === 'scheduled' && match.kickoff_utc) {
             clock = new Date(match.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'});
         }
@@ -775,12 +779,12 @@ export default class Archsport extends Extension {
                         expandedBody.add_child(liveTitle);
                         for (const fixture of otherLive.slice(0, 2)) {
                             const row = new St.BoxLayout({style_class: 'archsport-fixture-row'});
-                            row.add_child(this._label(`${fixture.elapsed ?? ''}′`, 'archsport-date'));
+                            row.add_child(this._label(fixture.status === 'halftime' ? 'HT' : minuteOf(fixture), 'archsport-date'));
                             for (const side of ['home', 'away']) {
                                 const crest = this._crestIcon(fixture, side, 16);
                                 if (crest) row.add_child(crest);
                             }
-                            const label = this._label(`${displayTeam(fixture, 'home')}  ${spoiler ? '● : ●' : `${fixture.home_score ?? '–'} : ${fixture.away_score ?? '–'}`}  ${displayTeam(fixture, 'away')}`,
+                            const label = this._label(`${displayTeam(fixture, 'home')}  ${spoiler ? '숨김' : `${fixture.home_score ?? '–'} : ${fixture.away_score ?? '–'}`}  ${displayTeam(fixture, 'away')}`,
                                 'archsport-context-text');
                             label.x_expand = true;
                             label.accessible_name = `홈 ${fixture.home} 대 원정 ${fixture.away}, ` +

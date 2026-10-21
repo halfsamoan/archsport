@@ -35,9 +35,11 @@ const PERIOD_ENDS = [45, 90, 105, 120];
 // snapshot: never further than the next poll, never through a period's end (stoppage reads
 // 45+′/90+′ because its length is unknown), and not at all while the clock stops (HT, shoot-out).
 // The next real poll replaces the estimate.
-export function liveMinuteLabel(match, updatedAt, now = Date.now(), maxMinutes = 5) {
+export function liveMinuteLabel(match, updatedAt, now = Date.now(), maxMinutes = 5, spoiler = false) {
     const elapsed = match?.elapsed == null ? NaN : Number(match.elapsed);
     if (!match || match.status === 'finished' || !Number.isInteger(elapsed)) return '';
+    // An extra-time minute would tell a spoiler-mode viewer that 90 minutes ended level.
+    if (spoiler && (['extra_time', 'penalties'].includes(match.status) || elapsed > 90)) return '90+′';
     const extra = Number.isInteger(match.extra) && match.extra > 0 ? match.extra : 0;
     const reported = `${elapsed}${extra ? `+${extra}` : ''}′`;
     const age = Math.floor((now - Date.parse(updatedAt ?? '')) / 60000);

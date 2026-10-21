@@ -42,8 +42,8 @@ test('the live minute advances locally between polls without inventing stoppage 
 });
 
 test('one minute timer re-renders only while a running clock is shown and dies with the extension', () => {
-    assert.match(source, /liveMinuteLabel\(match, data\.updated_at, Date\.now\(\), Math\.ceil\(\(data\.next_poll_seconds \?\? 300\) \/ 60\)\)/);
-    assert.match(source, /data\.health === 'error' \? liveMinuteLabel\(match, null\)/);
+    assert.match(source, /const minuteCap = Math\.ceil\(\(data\.next_poll_seconds \?\? 300\) \/ 60\);/);
+    assert.match(source, /data\.health === 'error' \? liveMinuteLabel\(fixture, null, 0, 0, spoiler\) :\n\s+liveMinuteLabel\(fixture, data\.updated_at, Date\.now\(\), minuteCap, spoiler\);/);
     const tick = source.slice(source.indexOf('// One tick at each minute boundary'), source.indexOf('    _startWorker()'));
     assert.match(tick, /if \(this\._minuteTimer\) GLib\.source_remove\(this\._minuteTimer\);\n\s+this\._minuteTimer = 0;/);
     assert.match(tick, /this\._dock\.state\.visible && data\.health !== 'error'/);
@@ -87,4 +87,15 @@ test('turning the automatic notch off never makes the shortcut or menu dead', ()
     assert.match(source, /const allowed = !this\._sleeping && \(this\._expanded \|\|\n\s+this\._settings\.get_boolean\('show-notch'\) && \(active \|\| Boolean\(this\._activeAlert\)\)\);/);
     const prefs = readFileSync(new URL('../extension/prefs.js', import.meta.url), 'utf8');
     assert.match(prefs, /\['show-notch', '경기 중 자동 표시'/);
+});
+
+test('spoiler mode hides scores and the extra time that would reveal a draw', async () => {
+    const {liveMinuteLabel} = await import('../extension/uiModel.js');
+    const updated = '2030-01-01T20:00:00Z';
+    const at = Date.parse(updated) + 61000;
+    assert.equal(liveMinuteLabel({status: 'extra_time', elapsed: 105}, updated, at, 5, true), '90+′');
+    assert.equal(liveMinuteLabel({status: 'penalties', elapsed: 120}, updated, at, 5, true), '90+′');
+    assert.equal(liveMinuteLabel({status: 'live', elapsed: 61}, updated, at, 5, true), '62′');
+    assert.match(source, /spoiler && \['extra_time', 'penalties'\]\.includes\(match\?\.status\) \? 'live' : match\?\.status/);
+    assert.doesNotMatch(source, /● : ●/);
 });
