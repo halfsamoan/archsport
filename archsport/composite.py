@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from .football_data import FootballDataSchedule
 from .identity import utc_datetime
-from .provider import ApiFootballLive, ProviderError
+from .provider import ACTIVE, ApiFootballLive, ProviderError
 from .teams import is_watched
 
 LIVE_POLL_SECONDS = 300
@@ -83,11 +83,15 @@ class CompositeProvider:
                 self._live_retry_until = now + timedelta(seconds=self.retry_after_seconds)
             self.warning = ' · '.join(message for message in (self._schedule_warning, str(exc)) if message)
             return []
-        self.context['live_matches'] = matches
+        # Finished matches go to the final-score card and results, not to '다른 진행 경기'.
+        self.context['live_matches'] = [match for match in matches if match.get('status') in ACTIVE]
         self.context['live_available'] = True
         self.context['live_notice'] = ''
-        if matches:
+        if any(match.get('status') in ACTIVE for match in matches):
             self._last_live_seen = now
+        elif matches:
+            # The adapter confirmed the final whistle; no grace polls for a match that is over.
+            self._last_live_seen = None
         elif self._last_live_seen and now - self._last_live_seen <= LIVE_RETRY_GRACE:
             self.next_poll_seconds = self.live_poll_seconds
         self.warning = ' · '.join(message for message in (self._schedule_warning, self.live.warning) if message)

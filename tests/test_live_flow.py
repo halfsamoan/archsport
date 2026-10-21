@@ -455,6 +455,57 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(payload['alert']['kind'], 'score')
         self.assertEqual(len(self.store.latest_all()), 2)
 
+    def test_final_whistle_shows_the_final_then_stands_in_for_the_pending_result(self):
+        kickoff = (NOW - timedelta(minutes=110)).isoformat()
+        pending = {'id': 'fd-1', 'home': 'Club Atlético de Madrid', 'away': 'FC Barcelona', 'status': 'scheduled',
+                   'home_score': None, 'away_score': None, 'kickoff_utc': kickoff, 'result_pending': True,
+                   'competition': 'Primera Division'}
+        live = copy.deepcopy(self.current)
+        live.update(id='fd-1', home='Atletico Madrid', away='Barcelona', kickoff_utc=kickoff, home_score=1,
+                    away_score=2, status='live', elapsed=88, source='api-football')
+        state = {'recent': [pending], 'feed': [live]}
+
+        class Provider:
+            context = {}
+            def load_context(self, now=None):
+                self.context = {'upcoming_matches': [], 'recent': copy.deepcopy(state['recent'])}
+                return self.context
+            def fetch(self):
+                self.context['live_available'] = True
+                return copy.deepcopy(state['feed'])
+
+        worker = Worker(self.config, self.store, Provider())
+        worker.poll(NOW)
+        state['feed'] = [{**live, 'status': 'finished', 'elapsed': 90}]
+        payload = worker.poll(NOW + timedelta(minutes=5))
+        self.assertEqual((payload['alert']['kind'], payload['alert']['title']), ('status', '경기 종료'))
+        self.assertEqual((payload['match']['status'], payload['match']['away_score']), ('finished', 2))
+        self.assertTrue(payload['visible'])
+        # The 'result pending' row is replaced in place, never duplicated.
+        self.assertEqual(len(payload['context']['recent']), 1)
+        row = payload['context']['recent'][0]
+        self.assertEqual((row['status'], row['home_score'], row['away_score']), ('finished', 1, 2))
+        self.assertTrue(row['provisional'])
+        self.assertNotIn('result_pending', row)
+        self.assertEqual(row['competition'], 'Primera Division')
+
+        state['feed'] = []
+        payload = worker.poll(NOW + timedelta(minutes=10))
+        self.assertEqual(payload['match']['away_score'], 2)
+        self.assertTrue(payload['visible'])
+        self.assertLessEqual(payload['next_poll_seconds'], 300)
+        payload = worker.poll(NOW + timedelta(minutes=16))
+        self.assertFalse(payload['visible'])
+        self.assertIsNone(payload['match'])
+        self.assertTrue(payload['context']['recent'][0]['provisional'])
+
+        # football-data publishes the result: its row wins and the stand-in is forgotten.
+        state['recent'] = [{**pending, 'status': 'finished', 'home_score': 1, 'away_score': 2,
+                            'result_pending': False}]
+        payload = worker.poll(NOW + timedelta(hours=4))
+        self.assertNotIn('provisional', payload['context']['recent'][0])
+        self.assertEqual(self.store.cache_get('provisional-results'), {})
+
     def test_kickoff_reminder_is_visible_once_and_not_a_persistent_match(self):
         fixture = {'id': 'match:barcelona:sevilla:20261018', 'home': 'Barcelona', 'away': 'Sevilla',
                    'home_score': None, 'away_score': None, 'status': 'scheduled',

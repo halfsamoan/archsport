@@ -33,12 +33,13 @@ def match_id(home, away, kickoff_utc):
 
 
 def same_fixture(left, right, tolerance_seconds=1200):
-    if team_key(left.get('home')) != team_key(right.get('home')):
-        return False
-    if team_key(left.get('away')) != team_key(right.get('away')):
-        return False
     left_time, right_time = utc_datetime(left.get('kickoff_utc')), utc_datetime(right.get('kickoff_utc'))
-    return bool(left_time and right_time and abs((left_time - right_time).total_seconds()) <= tolerance_seconds)
+    if not (left_time and right_time and abs((left_time - right_time).total_seconds()) <= tolerance_seconds):
+        return False
+    same = {side: team_key(left.get(side)) == team_key(right.get(side)) for side in ('home', 'away')}
+    # Providers spell opponents differently ('Club Atlético de Madrid' / 'Atletico Madrid'), but a
+    # supported club on the same side at the same kickoff cannot be in another fixture.
+    return all(same.values()) or any(same[side] and canonical_team(left.get(side)) for side in same)
 
 
 def merge_source_ids(target, source):

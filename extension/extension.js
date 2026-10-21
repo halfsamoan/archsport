@@ -18,7 +18,7 @@ import {displayTeam, fixturePresentation, teamCode} from './fixturePresentation.
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
 const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', 'poll-seconds', 'daily-budget', 'key-revision']);
-const STATUS = {live: '진행 중', halftime: 'HT', finished: 'FT', scheduled: '경기 전',
+const STATUS = {live: '진행 중', halftime: 'HT', finished: '경기 종료', scheduled: '경기 전',
     extra_time: '연장', penalties: '승부차기', postponed: '연기', cancelled: '취소',
     interrupted: '중단', abandoned: '중단 종료', unknown: '상태 미확인'};
 const firstFocusable = actor => {
@@ -250,9 +250,10 @@ export default class Archsport extends Extension {
     _visibility() {
         if (!this._enabled || this._shellEnding || !this._dock) return;
         const match = this._payload.match;
+        // A finished match arrives as visible only during the worker's short final-score window.
         const active = this._payload.visible !== false && this._recentlyUpdated() &&
             (this._payload.mode === 'demo' && Boolean(match) ||
-                ['live', 'halftime', 'extra_time', 'penalties', 'interrupted'].includes(match?.status));
+                ['live', 'halftime', 'extra_time', 'penalties', 'interrupted', 'finished'].includes(match?.status));
         const allowed = this._settings.get_boolean('show-notch') && !this._sleeping &&
             (active || Boolean(this._activeAlert) || this._expanded);
         const fullscreen = this._settings.get_boolean('hide-fullscreen') && this._monitor()?.inFullscreen;
@@ -573,7 +574,8 @@ export default class Archsport extends Extension {
         // Spoiler mode prints words, not two dots that read like a rendering glitch.
         const score = spoiler ? '숨김' : match ? `${match.home_score ?? '–'} : ${match.away_score ?? '–'}` : '– : –';
         const spokenScore = spoiler ? '점수 숨김' : match ? `${match.home_score ?? '미확인'} 대 ${match.away_score ?? '미확인'}` : '';
-        const liveMinute = match && match.elapsed != null ? `${match.elapsed}${match.extra ? `+${match.extra}` : ''}′` : '';
+        const liveMinute = match && match.elapsed != null && match.status !== 'finished' ?
+            `${match.elapsed}${match.extra ? `+${match.extra}` : ''}′` : '';
         let clock = match ? `${STATUS[match.status] ?? '상태 미확인'} ${liveMinute}`.trim() : '';
         if (match?.status === 'scheduled' && match.kickoff_utc) {
             clock = new Date(match.kickoff_utc).toLocaleString('ko-KR', {month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit'});
@@ -630,7 +632,8 @@ export default class Archsport extends Extension {
             row.add_child(this._label(score, spoiler ? 'archsport-team archsport-team-hidden' : 'archsport-team'));
             if (match) row.add_child(this._logo(match, 'away', 20));
             const compactStatus = data.mode === 'demo' ? '시연' : data.health === 'error' ? '오프라인' :
-                match?.status === 'halftime' ? 'HT' : match?.status === 'scheduled' ? '예정' : liveMinute;
+                match?.status === 'halftime' ? 'HT' : match?.status === 'finished' ? '종료' :
+                    match?.status === 'scheduled' ? '예정' : liveMinute;
             if (compactStatus)
                 row.add_child(this._label(compactStatus, data.health === 'error' ? 'archsport-alert' :
                     liveNow ? 'archsport-caption archsport-live-now' : 'archsport-caption'));

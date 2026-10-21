@@ -301,6 +301,11 @@ class ApiFootball:
         return current
 
 
+LIVE_TRACKED_KEY = 'live-tracked:api-football'
+# A watched match that left live=all within this window is looked up once by its id.
+FINISH_LOOKUP_SECONDS = 30 * 60
+
+
 class ApiFootballLive(ApiFootball):
     """Low-quota live adapter for every configured club."""
     def __init__(self, config, store, opener=urlopen):
@@ -310,49 +315,80 @@ class ApiFootballLive(ApiFootball):
         self.context = {'upcoming': None, 'upcoming_matches': [], 'recent': [],
                         'recent_stats': None, 'stats_available': False}
 
-    def fetch(self, now=None, scheduled=()):
+    def _watched_match(self, item, schedule_matches):
+        """Normalize one in-play or finished fixture of a watched club; None otherwise."""
         from .identity import match_id, same_fixture
         from .teams import TEAM_MEDIA_IDS, canonical_team, is_watched
 
+        has_events = isinstance(item.get('events'), list)
+        normalized = normalize(item, item.get('events') if has_events else None)
+        if normalized['status'] not in ACTIVE | {'finished'} or not any(
+                is_watched(normalized[side], self.watched) for side in ('home', 'away')):
+            return None
+        provider_id = str(normalized['id'])
+        fixture = next((candidate for candidate in schedule_matches
+                        if same_fixture(candidate, normalized)), None)
+        original_id = provider_id
+        normalized['id'] = fixture['id'] if fixture else match_id(
+            normalized['home'], normalized['away'], normalized['kickoff_utc'])
+        normalized['source'] = 'api-football'
+        normalized['source_ids'] = {'api_football': original_id}
+        if fixture:
+            normalized['source_ids'].update(fixture.get('source_ids') or {})
+        normalized['team_keys'] = [canonical_team(normalized['home']), canonical_team(normalized['away'])]
+        for side in ('home', 'away'):
+            normalized[f'{side}_id'] = normalized.get(f'{side}_id') or TEAM_MEDIA_IDS.get(
+                canonical_team(normalized[side]))
+
+        signature = tuple(normalized.get(key) for key in
+                          ('home_score', 'away_score', 'status', 'home_penalties', 'away_penalties'))
+        signature_key = f'live-signature:{original_id}'
+        previous_signature = self.store.cache_get(signature_key)
+        signature_saved = previous_signature is None or tuple(previous_signature) == signature
+        # A response that already carries events (fixtures?id does) needs no second request.
+        if not has_events and previous_signature is not None and tuple(previous_signature) != signature:
+            try:
+                events = self.get('fixtures/events', fixture=original_id)
+                normalized['events'] = normalize(item, events)['events']
+                signature_saved = True
+            except ProviderError:
+                self.warning = '점수는 갱신했지만 경기 상세를 받지 못했습니다.'
+        if signature_saved or has_events:
+            self.store.cache_set(signature_key, signature)
+        return normalized
+
+    def fetch(self, now=None, scheduled=()):
+        now = now or datetime.now(timezone.utc)
         items = self.get('fixtures', live='all')
         matches = []
         self.warning = ''
         schedule_matches = list(scheduled or ())
         for item in items:
-            normalized = normalize(item)
-            if normalized['status'] not in ACTIVE or not any(
-                    is_watched(normalized[side], self.watched) for side in ('home', 'away')):
+            match = self._watched_match(item, schedule_matches)
+            if match:
+                matches.append(match)
+        listed = {match['source_ids']['api_football'] for match in matches}
+        # live=all lists only matches in play, so a watched match that drops out has ended (or
+        # was suspended). One fixtures?id read settles which and carries the real final score.
+        previous = self.store.cache_get(LIVE_TRACKED_KEY, {})
+        tracked = {}
+        for original_id, seen in (previous.items() if isinstance(previous, dict) else ()):
+            if original_id in listed or not 0 <= now.timestamp() - seen <= FINISH_LOOKUP_SECONDS:
                 continue
-            provider_id = str(normalized['id'])
-            fixture = next((candidate for candidate in schedule_matches
-                            if same_fixture(candidate, normalized)), None)
-            original_id = provider_id
-            normalized['id'] = fixture['id'] if fixture else match_id(
-                normalized['home'], normalized['away'], normalized['kickoff_utc'])
-            normalized['source'] = 'api-football'
-            normalized['source_ids'] = {'api_football': original_id}
-            if fixture:
-                normalized['source_ids'].update(fixture.get('source_ids') or {})
-            normalized['team_keys'] = [canonical_team(normalized['home']), canonical_team(normalized['away'])]
-            for side in ('home', 'away'):
-                normalized[f'{side}_id'] = normalized.get(f'{side}_id') or TEAM_MEDIA_IDS.get(
-                    canonical_team(normalized[side]))
-
-            signature = tuple(normalized.get(key) for key in
-                              ('home_score', 'away_score', 'status', 'home_penalties', 'away_penalties'))
-            signature_key = f'live-signature:{original_id}'
-            previous_signature = self.store.cache_get(signature_key)
-            signature_saved = previous_signature is None or tuple(previous_signature) == signature
-            if previous_signature is not None and tuple(previous_signature) != signature:
-                try:
-                    events = self.get('fixtures/events', fixture=original_id)
-                    normalized['events'] = normalize(item, events)['events']
-                    signature_saved = True
-                except ProviderError:
-                    self.warning = '점수는 갱신했지만 경기 상세를 받지 못했습니다.'
-            if signature_saved:
-                self.store.cache_set(signature_key, signature)
-            matches.append(normalized)
+            try:
+                rows = self.get('fixtures', id=original_id)
+            except ProviderError:
+                tracked[original_id] = seen  # retried on the next probe
+                continue
+            for item in rows:
+                match = self._watched_match(item, schedule_matches)
+                if match:
+                    matches.append(match)
+        for match in matches:
+            if match['status'] in ACTIVE:
+                tracked[match['source_ids']['api_football']] = now.timestamp()
+        if tracked != previous:
+            self.store.cache_set(LIVE_TRACKED_KEY, tracked)
 
         order = {team: index for index, team in enumerate(self.watched)}
         matches.sort(key=lambda match: min((order.get(key, 999) for key in match['team_keys']), default=999))

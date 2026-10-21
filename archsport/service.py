@@ -1,11 +1,47 @@
 """One refresh transaction and payload assembly, independent of GNOME."""
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from .provider import ProviderError
+from .identity import same_fixture, utc_datetime
+from .provider import ACTIVE, ProviderError
 from .scheduler import match_visible, poll_interval, schedule_wake_seconds
 from .teams import canonical_team, normalize_watch_list
 
 SCHEDULE_REFRESH_SECONDS = 6 * 60 * 60
+# The final whistle stays on the notch this long after it was first observed.
+FINAL_SHOW_SECONDS = 10 * 60
+# API-Football final scores stand in for the hours football-data needs to publish a result.
+PROVISIONAL_KEY = 'provisional-results'
+# ponytail: a result football-data never covers (a cup match) simply ages out after two days.
+PROVISIONAL_KEEP = timedelta(days=2)
+RESULT_FIELDS = ('home_score', 'away_score', 'home_penalties', 'away_penalties')
+
+
+def merge_provisional(recent, results, now):
+    """Return recent rows with provisional finals merged in, and the finals still unconfirmed."""
+    rows = list(recent or [])
+    keep = {}
+    for identifier, result in results.items():
+        try:
+            kickoff = utc_datetime(result.get('kickoff_utc'))
+        except (TypeError, ValueError):
+            continue
+        if not kickoff or now - kickoff > PROVISIONAL_KEEP:
+            continue
+        index = next((position for position, row in enumerate(rows)
+                      if row.get('id') == identifier or same_fixture(row, result)), None)
+        if index is not None and rows[index].get('status') == 'finished' and not rows[index].get('provisional'):
+            continue  # football-data published the real result
+        final = {key: result.get(key) for key in RESULT_FIELDS}
+        if index is None:
+            rows.append({**{key: value for key, value in result.items() if key not in ('events', 'finished_at')},
+                         'status': 'finished', 'provisional': True})
+        else:
+            # Replaces the 'result pending' row in place, keeping football-data's own fields.
+            row = {key: value for key, value in rows[index].items() if key != 'result_pending'}
+            rows[index] = {**row, **final, 'status': 'finished', 'provisional': True}
+        keep[identifier] = result
+    rows.sort(key=lambda row: row.get('kickoff_utc') or '', reverse=True)
+    return rows[:9], keep
 
 
 class Worker:
@@ -68,6 +104,8 @@ class Worker:
                     match = self.logos.decorate(match)
                 self.latest_matches[match['id']] = match
                 self.latest_seen[match['id']] = now.timestamp()
+                if match.get('status') == 'finished' and match.get('source') == 'api-football':
+                    match['finished_at'] = self._remember_final(match, now)
                 previous_interval = min(600, int(self.last_interval or self._poll_window_seconds()))
                 max_gap = max(120, 2 * previous_interval + 60)
                 alert = self.store.ingest(match, now.timestamp(), suppress=self.first,
@@ -82,15 +120,19 @@ class Worker:
                     self.logos.decorate(match)
             active.sort(key=lambda pair: self._team_priority(pair[0]))
             alert_pair = next((pair for pair in active if pair[1]), None)
+            live = [pair[0] for pair in active if pair[0].get('status') in ACTIVE]
             if alert_pair:
                 selected, event_alert = alert_pair
                 event_alert['match_id'] = selected['id']
                 event_alert['kickoff_utc'] = selected.get('kickoff_utc')
-            elif active:
-                selected = active[0][0]
+            elif live:
+                selected = live[0]
+            else:
+                selected = self._final_on_show(now)
             self.first, self.errors = False, 0
             self.last_success = now.isoformat()
             context = getattr(self.provider, 'context', context)
+            self._merge_finals(context, now)
             kickoff_alert, kickoff_match = self._kickoff_reminder(context, now) if not event_alert else (None, None)
             if kickoff_alert and not event_alert:
                 selected = kickoff_match
@@ -100,6 +142,10 @@ class Worker:
             interval = poll_interval(selected if selected and selected.get('status') in
                                      ('live', 'halftime', 'extra_time', 'penalties', 'interrupted') else None,
                                      now, live_seconds, upcoming_matches=upcoming)
+            final_left = self._final_seconds_left(selected, now)
+            if final_left:
+                # Poll again when the final card is due to leave, so it never outstays its window.
+                interval = min(interval, max(15, final_left))
             retry_after = getattr(self.provider, 'retry_after_seconds', None)
             if retry_after:
                 # A provider quota/plan cooldown blocks that provider, while
@@ -118,7 +164,7 @@ class Worker:
             payload = {'mode': self.config['mode'], 'health': 'fresh' if selected and
                        selected.get('status') in ('live', 'halftime', 'extra_time', 'penalties', 'interrupted') else 'idle',
                        'match': selected, 'alert': alert, 'updated_at': self.last_success,
-                       'visible': match_visible(selected, now) or bool(kickoff_alert),
+                       'visible': match_visible(selected, now) or bool(kickoff_alert) or bool(final_left),
                        'message': message,
                        'next_poll_seconds': interval,
                        'stale_after_seconds': self._stale_after_seconds(),
@@ -133,6 +179,7 @@ class Worker:
                 for fixtures in (context.get('upcoming_matches', []), context.get('recent', [])):
                     for fixture in fixtures:
                         self.logos.decorate(fixture)
+            self._merge_finals(context, now)
             kickoff_alert, kickoff_match = self._kickoff_reminder(context, now)
             latest_id = max(self.latest_matches,
                             key=lambda identifier: self.latest_seen.get(identifier, 0), default=None)
@@ -155,6 +202,34 @@ class Worker:
             payload['visible'] = True
         self.last_interval = payload.get('next_poll_seconds')
         return payload
+
+    def _remember_final(self, match, now):
+        results = self.store.cache_get(PROVISIONAL_KEY, {})
+        if not isinstance(results, dict):
+            results = {}
+        first_seen = (results.get(match['id']) or {}).get('finished_at', now.timestamp())
+        results[match['id']] = {**match, 'provisional': True, 'finished_at': first_seen}
+        self.store.cache_set(PROVISIONAL_KEY, results)
+        return first_seen
+
+    def _final_seconds_left(self, match, now):
+        if not match or match.get('status') != 'finished' or not isinstance(match.get('finished_at'), (int, float)):
+            return 0
+        return max(0, int(match['finished_at'] + FINAL_SHOW_SECONDS - now.timestamp()))
+
+    def _final_on_show(self, now):
+        results = self.store.cache_get(PROVISIONAL_KEY, {})
+        shown = [result for result in (results.values() if isinstance(results, dict) else ())
+                 if self._final_seconds_left(result, now)]
+        return max(shown, key=lambda result: result['finished_at'], default=None)
+
+    def _merge_finals(self, context, now):
+        results = self.store.cache_get(PROVISIONAL_KEY, {})
+        if not isinstance(context, dict) or not isinstance(results, dict) or not results:
+            return
+        context['recent'], keep = merge_provisional(context.get('recent'), results, now)
+        if keep != results:
+            self.store.cache_set(PROVISIONAL_KEY, keep)
 
     def _team_priority(self, match):
         priorities = {team: index for index, team in enumerate(self.watched)}

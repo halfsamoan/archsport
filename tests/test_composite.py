@@ -153,6 +153,27 @@ class CompositeProviderTests(unittest.TestCase):
         self.assertEqual(provider.fetch(NOW + timedelta(minutes=30)), [])
         self.assertEqual(len(calls), 2)
 
+    def test_confirmed_final_whistle_ends_the_grace_polls(self):
+        self.api_key.write_text('test-api-key', encoding='utf-8')
+        provider = CompositeProvider(self.config(), self.store)
+        provider._scheduled = [{'id': 'match:barcelona:sevilla:20261018', 'home': 'Barcelona',
+                                'away': 'Sevilla', 'status': 'scheduled',
+                                'kickoff_utc': (NOW - timedelta(hours=2)).isoformat()}]
+        feeds = [[{'id': 'm', 'status': 'live'}], [{'id': 'm', 'status': 'finished'}]]
+        calls = []
+
+        class Live:
+            warning = ''
+            def fetch(self, at, scheduled):
+                calls.append(at)
+                return feeds.pop(0) if feeds else []
+
+        provider.live = Live()
+        provider.fetch(NOW)
+        provider.fetch(NOW + timedelta(minutes=5))
+        provider.fetch(NOW + timedelta(minutes=10))
+        self.assertEqual(len(calls), 2)
+
     def test_empty_schedule_also_checks_live_feed_on_cold_start(self):
         self.api_key.write_text('test-api-key', encoding='utf-8')
         provider = CompositeProvider(self.config(), self.store)

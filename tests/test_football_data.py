@@ -190,6 +190,12 @@ class FootballDataTests(unittest.TestCase):
         left = {'home': 'FC Barcelona', 'away': 'Sevilla FC', 'kickoff_utc': '2026-10-20T19:00:00Z'}
         right = {'home': 'Barcelona', 'away': 'Sevilla', 'kickoff_utc': '2026-10-20T19:15:00Z'}
         self.assertTrue(same_fixture(left, right))
+        # Opponent spellings differ between providers; a watched club on the same side decides.
+        fd = {'home': 'Club Atlético de Madrid', 'away': 'FC Barcelona', 'kickoff_utc': '2026-11-08T20:00:00Z'}
+        api = {'home': 'Atletico Madrid', 'away': 'Barcelona', 'kickoff_utc': '2026-11-08T20:00:00Z'}
+        self.assertTrue(same_fixture(fd, api))
+        self.assertFalse(same_fixture(fd, {**api, 'home': 'Barcelona', 'away': 'Atletico Madrid'}))
+        self.assertFalse(same_fixture({**fd, 'away': 'Sevilla FC'}, {**api, 'away': 'Sevilla'}))
 
 
 class ApiFootballMultiTeamTests(unittest.TestCase):
@@ -252,6 +258,37 @@ class ApiFootballMultiTeamTests(unittest.TestCase):
         result = provider.fetch(NOW + timedelta(minutes=3))
         self.assertEqual(result[0]['events'][0]['player'], 'Player')
         self.assertEqual(parse_qs(urlparse(requests[-1].full_url).query), {'fixture': ['55']})
+
+    def test_match_leaving_live_feed_is_read_once_by_id_for_its_final_score(self):
+        live = self.fixture(77, 'Atletico Madrid', 'Barcelona', '2026-11-08T20:00:00Z', (1, 1))
+        live['fixture']['status'] = {'short': '2H', 'elapsed': 88}
+        final = self.fixture(77, 'Atletico Madrid', 'Barcelona', '2026-11-08T20:00:00Z', (1, 2))
+        final['fixture']['status'] = {'short': 'FT', 'elapsed': 90}
+        final['events'] = [{'type': 'Goal', 'detail': 'Normal Goal', 'time': {'elapsed': 90, 'extra': 3},
+                            'player': {'name': 'Late Scorer'}, 'team': {'name': 'Barcelona'}}]
+        feeds = [[live], [], []]
+        requests = []
+
+        def opener(request, **kwargs):
+            params = parse_qs(urlparse(request.full_url).query)
+            requests.append(params)
+            body = feeds.pop(0) if 'live' in params else [final] if 'id' in params else self.fail(params)
+            return Response(json.dumps({'errors': [], 'response': body}).encode())
+
+        provider = ApiFootballLive({'daily_budget': 100, 'key_file': str(self.key_file),
+                                    'watch_teams': ['Barcelona']}, self.store, opener)
+        scheduled = [{'id': 'match:club-atletico-de-madrid:barcelona:20261108',
+                      'home': 'Club Atlético de Madrid', 'away': 'FC Barcelona',
+                      'kickoff_utc': '2026-11-08T20:00:00Z', 'source_ids': {'football_data': '9'}}]
+        at = datetime(2026, 11, 8, 21, 40, tzinfo=timezone.utc)
+        self.assertEqual(provider.fetch(at, scheduled)[0]['status'], 'live')
+        ended = provider.fetch(at + timedelta(minutes=5), scheduled)
+        self.assertEqual([(m['status'], m['home_score'], m['away_score']) for m in ended], [('finished', 1, 2)])
+        self.assertEqual(ended[0]['id'], scheduled[0]['id'])
+        self.assertEqual(ended[0]['events'][0]['player'], 'Late Scorer')
+        self.assertEqual(provider.fetch(at + timedelta(minutes=10), scheduled), [])
+        # live=all three times, one id lookup, and no separate events request.
+        self.assertEqual([sorted(params) for params in requests], [['live'], ['live'], ['id'], ['live']])
 
 
 if __name__ == '__main__':
