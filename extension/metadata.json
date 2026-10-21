@@ -3,7 +3,7 @@
   "name": "Archsport — Football Notch",
   "description": "Football schedules and live scores for Barcelona, Lazio, and Como.",
   "shell-version": ["50"],
-  "version": 23,
+  "version": 24,
   "settings-schema": "org.gnome.shell.extensions.archsport",
   "session-modes": ["user"]
 }
