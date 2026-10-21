@@ -16,6 +16,15 @@ const DISPLAY_NAMES = new Map([
     ['athletic club', 'Athletic'], ['real sociedad de futbol', 'Real Sociedad'],
     ['rc celta de vigo', 'Celta'], ['girona fc', 'Girona'], ['rcd espanyol de barcelona', 'Espanyol'],
 ]);
+// Short names by football-data code or by either provider's competition name.
+const COMPETITIONS = new Map([
+    ['pd', '라리가'], ['primera division', '라리가'], ['la liga', '라리가'],
+    ['sa', '세리에 A'], ['serie a', '세리에 A'],
+    ['cl', 'UCL'], ['uefa champions league', 'UCL'], ['champions league', 'UCL'],
+    ['copa del rey', '코파 델 레이'], ['coppa italia', '코파 이탈리아'],
+    ['super cup', '수페르코파'],
+    ['uefa europa league', 'UEL'], ['uefa europa conference league', 'UECL'],
+]);
 const WATCHED_IDS = new Map([[529, 'barcelona'], [487, 'lazio'], [895, 'como']]);
 const WATCHED_NAMES = new Map([
     ['fc barcelona', 'barcelona'], ['barcelona', 'barcelona'],
@@ -60,6 +69,15 @@ function watchedKey(fixture, side) {
         WATCHED_NAMES.get(normalized(fixture?.[side]));
 }
 
+// 'UCL', '라리가'; an unknown competition keeps its own name, a missing one stays empty.
+export function competitionLabel(fixture) {
+    for (const value of [fixture?.competition_code, fixture?.competition]) {
+        const label = COMPETITIONS.get(normalized(value));
+        if (label) return label;
+    }
+    return String(fixture?.competition ?? '').trim();
+}
+
 function sameDay(a, b) {
     return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -92,6 +110,7 @@ export function fixturePresentation(fixture, watchedTeams, {result = false, spoi
     const primary = oneSide ? displayTeam(fixture, opponent) :
         `${displayTeam(fixture, 'home')} — ${displayTeam(fixture, 'away')}`;
     const direction = oneSide ? oneSide === 'home' ? '홈' : '원정' : '';
+    const competition = competitionLabel(fixture);
     // A watched club's result reads from its own side: its goals first, then 승/무/패.
     // Fixtures without exactly one watched side keep the official home : away order.
     const ownGoals = oneSide ? fixture?.[`${oneSide}_score`] : fixture?.home_score;
@@ -103,21 +122,22 @@ export function fixturePresentation(fixture, watchedTeams, {result = false, spoi
     const shortDate = validDate ? fixtureDate(date, now, result) : '';
     const fullDate = validDate ? date.toLocaleString('ko-KR',
         {year: 'numeric', month: 'long', day: 'numeric', weekday: 'long', hour: '2-digit', minute: '2-digit'}) : '날짜 미확인';
+    const spokenDate = competition ? `${fullDate}, ${competition}` : fullDate;
     let accessibleName;
     if (oneSide) {
-        accessibleName = `${fullDate}, ${fixture?.[oneSide] ?? '감시 팀'} ${direction} 경기, 상대 ${fixture?.[opponent] ?? '미확인'}`;
+        accessibleName = `${spokenDate}, ${fixture?.[oneSide] ?? '감시 팀'} ${direction} 경기, 상대 ${fixture?.[opponent] ?? '미확인'}`;
         if (result) {
             accessibleName += fixture?.result_pending ? ', 결과 확인 중' : spoiler ? ', 결과 숨김' :
                 `, ${ownGoals ?? '미확인'} 대 ${otherGoals ?? '미확인'}${outcomeKind ? ` ${OUTCOME_SPOKEN[outcomeKind]}` : ''}`;
         }
     } else {
-        accessibleName = `${fullDate}, 홈 ${fixture?.home ?? '미확인'} 대 원정 ${fixture?.away ?? '미확인'}`;
+        accessibleName = `${spokenDate}, 홈 ${fixture?.home ?? '미확인'} 대 원정 ${fixture?.away ?? '미확인'}`;
         if (result) {
             accessibleName += spoiler ? ', 결과 숨김' :
                 `, 홈 ${fixture?.home_score ?? '미확인'} 대 원정 ${fixture?.away_score ?? '미확인'}`;
         }
     }
-    return {primary, direction, score, outcome: outcomeKind ? OUTCOME[outcomeKind] : '', outcomeKind,
+    return {primary, direction, competition, score, outcome: outcomeKind ? OUTCOME[outcomeKind] : '', outcomeKind,
         shortDate, fullDate, crestSide: oneSide, watchedBoth: sides.length === 2,
         watchedName: oneSide ? displayTeam(fixture, oneSide) : null, accessibleName};
 }

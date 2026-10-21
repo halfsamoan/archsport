@@ -61,3 +61,18 @@ test('missing crests fall back to readable club initials, never an emblem', () =
     assert.equal(teamCode({home: 'Parma Calcio 1913'}, 'home'), 'PAR');
     assert.equal(teamCode({home: ''}, 'home'), '?');
 });
+
+test('rows name the competition in short form beside home/away', async () => {
+    const {competitionLabel} = await import('../extension/fixturePresentation.js');
+    assert.equal(competitionLabel({competition_code: 'CL', competition: 'UEFA Champions League'}), 'UCL');
+    assert.equal(competitionLabel({competition: 'Primera Division'}), '라리가');
+    assert.equal(competitionLabel({competition: 'Serie A'}), '세리에 A');
+    assert.equal(competitionLabel({competition: 'Copa del Rey'}), '코파 델 레이');
+    assert.equal(competitionLabel({competition: 'Some Friendly Cup'}), 'Some Friendly Cup');
+    assert.equal(competitionLabel({}), '');
+    const row = fixturePresentation({home: 'FC Barcelona', away: 'Real Madrid CF', home_id: 529,
+        competition_code: 'PD', kickoff_utc: '2026-10-26T20:00:00Z'}, ['Barcelona']);
+    assert.equal(row.competition, '라리가');
+    assert.equal(row.direction, '홈');
+    assert.match(row.accessibleName, /, 라리가, FC Barcelona 홈 경기, 상대 Real Madrid CF$/);
+});

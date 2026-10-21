@@ -15,7 +15,7 @@ import {createNotchSurface} from './notchSurface.js';
 import {DESIGN} from './designTokens.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement, latestEvent,
     liveMinuteLabel} from './uiModel.js';
-import {displayTeam, fixturePresentation, teamCode} from './fixturePresentation.js';
+import {competitionLabel, displayTeam, fixturePresentation, teamCode} from './fixturePresentation.js';
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from './alertQueue.js';
 
 const DATA_KEYS = new Set(['mode', 'team-name', 'team-country', 'watch-teams', 'poll-seconds', 'daily-budget', 'key-revision']);
@@ -415,7 +415,9 @@ export default class Archsport extends Extension {
         row.add_child(this._fixtureLead(fixture, presentation));
         const names = new St.BoxLayout({style_class: 'archsport-fixture-names', x_expand: true});
         names.add_child(this._label(presentation.primary, 'archsport-context-text'));
-        if (presentation.direction) names.add_child(this._label(presentation.direction, 'archsport-direction'));
+        // '홈 · UCL': which competition, in the same quiet caption as home/away.
+        const tertiary = [presentation.direction, presentation.competition].filter(Boolean).join(' · ');
+        if (tertiary) names.add_child(this._label(tertiary, 'archsport-direction'));
         row.add_child(names);
         if (result && fixture?.result_pending) {
             row.add_child(this._label('결과 대기', 'archsport-date'));
@@ -662,9 +664,11 @@ export default class Archsport extends Extension {
             if (headerCrest) identity.add_child(headerCrest);
             const alertTitle = alert?.kind === 'score' ?
                 alert.scoring_side === 'watched' ? '골!' : alert.scoring_side === 'opponent' ? '상대 골' : alert.title : alert?.title;
+            const competition = data.mode === 'demo' ? '' : competitionLabel(match);
             identity.add_child(this._label(data.mode === 'demo' && alertTitle ? `시연 · ${alertTitle}` :
                 alertTitle || (data.mode === 'demo' ? '시연' : data.health === 'error' ?
-                    (data.ui_version_mismatch ? '업데이트 적용 대기' : '오프라인') : clock || '경기 정보'),
+                    (data.ui_version_mismatch ? '업데이트 적용 대기' : '오프라인') :
+                    clock ? [competition, clock].filter(Boolean).join(' · ') : '경기 정보'),
                 alert ? 'archsport-event-title' : data.health === 'error' ? 'archsport-alert' :
                     liveNow ? 'archsport-live archsport-live-now' : 'archsport-live'));
             header.add_child(identity);
@@ -689,7 +693,7 @@ export default class Archsport extends Extension {
             if (scoreboardShown) {
                 const scoreboard = focusKey(new St.BoxLayout({style_class: 'archsport-scoreboard', x_expand: true,
                     reactive: true, can_focus: true,
-                    accessible_name: `홈 ${match.home} 대 원정 ${match.away}, ${spokenScore}, ${clock}`}), 'scoreboard');
+                    accessible_name: `${competition ? `${competition}, ` : ''}홈 ${match.home} 대 원정 ${match.away}, ${spokenScore}, ${clock}`}), 'scoreboard');
                 const home = new St.BoxLayout({style_class: 'archsport-side', vertical: true, x_expand: true});
                 const homeLogo = this._teamMark(match, 'home', 34);
                 homeLogo.x_align = Clutter.ActorAlign.CENTER;
