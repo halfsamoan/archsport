@@ -529,7 +529,7 @@ export default class Archsport extends Extension {
     }
 
     _announceAlert(alert) {
-        if (!['score', 'kickoff'].includes(alert?.kind)) return;
+        if (!['score', 'correction', 'status', 'kickoff'].includes(alert?.kind)) return;
         const key = this._alertKey(alert);
         if (!key || this._announcedAlertKeys.has(key) || !this._alertVisible(alert, key)) return;
         const now = GLib.get_monotonic_time() / 1000;
@@ -651,7 +651,8 @@ export default class Archsport extends Extension {
                 row.add_child(this._label(compactStatus, data.health === 'error' ? 'archsport-alert' :
                     liveNow ? 'archsport-caption archsport-live-now' : 'archsport-caption'));
             const compact = new St.Button({style_class: 'archsport-compact-button', can_focus: true, x_expand: true,
-                accessible_name: `${match ? `홈 ${match.home} 원정 ${match.away}, ${spokenScore}` : '축구'}, ${clock || '경기 정보'}. 펼쳐서 일정과 최근 경기 보기`});
+                accessible_name: `${match ? `홈 ${match.home} 원정 ${match.away}, ${spokenScore}` : '축구'}, ${clock || '경기 정보'}. ` +
+                    (match && match.status !== 'scheduled' ? '펼쳐서 스코어보드 보기' : '펼쳐서 일정과 최근 경기 보기')});
             compact.set_child(row);
             compact.connect('clicked', () => this._toggle());
             this._root.add_child(compact);
@@ -703,10 +704,13 @@ export default class Archsport extends Extension {
                 'archsport-event'));
                 expandedBody.add_child(reminder);
             }
+            const latest = latestEvent(match, alert?.kind === 'score');
             if (scoreboardShown) {
+                // The event line below cannot take focus, so the scoreboard reads it too.
+                const spokenEvent = latest && !spoiler ? `, ${eventSummary(latest)}` : '';
                 const scoreboard = focusKey(new St.BoxLayout({style_class: 'archsport-scoreboard', x_expand: true,
                     reactive: true, can_focus: true,
-                    accessible_name: `${competition ? `${competition}, ` : ''}홈 ${match.home} 대 원정 ${match.away}, ${spokenScore}, ${clock}`}), 'scoreboard');
+                    accessible_name: `${competition ? `${competition}, ` : ''}홈 ${match.home} 대 원정 ${match.away}, ${spokenScore}, ${clock}${spokenEvent}`}), 'scoreboard');
                 const home = new St.BoxLayout({style_class: 'archsport-side', vertical: true, x_expand: true});
                 const homeLogo = this._teamMark(match, 'home', 34);
                 homeLogo.x_align = Clutter.ActorAlign.CENTER;
@@ -743,7 +747,6 @@ export default class Archsport extends Extension {
                 scoreboard.add_child(away);
                 expandedBody.add_child(scoreboard);
             }
-            const latest = latestEvent(match, alert?.kind === 'score');
             if (latest && !spoiler) {
                 const eventLabel = this._label(eventSummary(latest), 'archsport-event');
                 // While the notch is opening the whole body already settles in; a second
@@ -786,18 +789,20 @@ export default class Archsport extends Extension {
                         liveTitle.add_child(this._label('다른 진행 경기', 'archsport-caption'));
                         expandedBody.add_child(liveTitle);
                         for (const fixture of otherLive.slice(0, 2)) {
-                            const row = new St.BoxLayout({style_class: 'archsport-fixture-row'});
-                            row.add_child(this._label(fixture.status === 'halftime' ? 'HT' : minuteOf(fixture), 'archsport-date'));
-                            for (const side of ['home', 'away']) {
-                                const crest = this._crestIcon(fixture, side, 16);
-                                if (crest) row.add_child(crest);
-                            }
-                            const label = this._label(`${displayTeam(fixture, 'home')}  ${spoiler ? '숨김' : `${fixture.home_score ?? '–'} : ${fixture.away_score ?? '–'}`}  ${displayTeam(fixture, 'away')}`,
-                                'archsport-context-text');
-                            label.x_expand = true;
-                            label.accessible_name = `홈 ${fixture.home} 대 원정 ${fixture.away}, ` +
-                                (spoiler ? '점수 숨김' : `${fixture.home_score ?? '미확인'} 대 ${fixture.away_score ?? '미확인'}`);
-                            row.add_child(label);
+                            const minute = fixture.status === 'halftime' ? 'HT' : minuteOf(fixture);
+                            // Focusable like the schedule rows, so Tab and a screen reader reach it.
+                            const row = focusKey(new St.BoxLayout({style_class: 'archsport-fixture-row', can_focus: true,
+                                reactive: true, accessible_name: `홈 ${fixture.home} 대 원정 ${fixture.away}, ` +
+                                    `${spoiler ? '점수 숨김' : `${fixture.home_score ?? '미확인'} 대 ${fixture.away_score ?? '미확인'}`}, ${minute}`}),
+                            `live:${fixture.id}`);
+                            row.add_child(this._label(minute, 'archsport-date'));
+                            // '[crest] Lazio 1 : 0 Parma [crest]': each crest beside its own name.
+                            const homeCrest = this._crestIcon(fixture, 'home', 16);
+                            if (homeCrest) row.add_child(homeCrest);
+                            row.add_child(this._label(`${displayTeam(fixture, 'home')}  ${spoiler ? '숨김' : `${fixture.home_score ?? '–'} : ${fixture.away_score ?? '–'}`}  ${displayTeam(fixture, 'away')}`,
+                                'archsport-context-text'));
+                            const awayCrest = this._crestIcon(fixture, 'away', 16);
+                            if (awayCrest) row.add_child(awayCrest);
                             expandedBody.add_child(row);
                         }
                     }

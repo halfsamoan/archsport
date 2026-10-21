@@ -90,5 +90,7 @@ export function alertAnnouncement(alert, match, spoiler = false) {
         return `${title}. ${alert.club ?? '경기'} 대 ${alert.opponent ?? '상대'}.`;
     const score = match ? `${match.home ?? '홈'} ${match.home_score ?? '미확인'} 대 ` +
         `${match.away_score ?? '미확인'} ${match.away ?? '원정'}` : '';
-    return [title, score, eventSummary(latestEvent(match, true))].filter(Boolean).join('. ');
+    // A scorer belongs to a goal alert only; HT or a correction reads title and score.
+    return [title, score, alert?.kind === 'score' ? eventSummary(latestEvent(match, true)) : '']
+        .filter(Boolean).join('. ');
 }

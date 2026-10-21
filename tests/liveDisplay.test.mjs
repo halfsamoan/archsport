@@ -106,3 +106,20 @@ test('reminder, empty header and scheduled clock use the schedule rows wording',
     assert.doesNotMatch(source, /toLocaleString\('ko-KR', \{month: 'numeric'/);
     assert.match(source, /clock \? \[competition, clock\]\.filter\(Boolean\)\.join\(' · '\) : '일정'\)/);
 });
+
+test('other live rows, the scorer and status alerts reach keyboard and screen-reader users', async () => {
+    const {alertAnnouncement} = await import('../extension/uiModel.js');
+    const {fixturePresentation} = await import('../extension/fixturePresentation.js');
+    assert.match(source, /'archsport-fixture-row', can_focus: true,\n\s+reactive: true, accessible_name: `홈 \$\{fixture\.home\} 대 원정/);
+    assert.match(source, /`live:\$\{fixture\.id\}`\);/);
+    assert.match(source, /\$\{clock\}\$\{spokenEvent\}`\}\), 'scoreboard'\);/);
+    assert.match(source, /\['score', 'correction', 'status', 'kickoff'\]\.includes\(alert\?\.kind\)/);
+    assert.match(source, /'펼쳐서 스코어보드 보기' : '펼쳐서 일정과 최근 경기 보기'/);
+    const match = {home: 'Barcelona', away: 'Como', home_score: 1, away_score: 0,
+        events: [{kind: 'Goal', detail: 'Normal Goal', elapsed: 30, player: 'Scorer'}]};
+    assert.equal(alertAnnouncement({kind: 'status', title: '하프타임'}, match), '하프타임. Barcelona 1 대 0 Como');
+    const pending = fixturePresentation({home: 'SS Lazio', away: 'Como 1907', team_keys: ['lazio', 'como'],
+        result_pending: true}, ['Lazio', 'Como'], {result: true});
+    assert.match(pending.accessibleName, /결과 확인 중$/);
+    assert.doesNotMatch(pending.accessibleName, /미확인 대/);
+});

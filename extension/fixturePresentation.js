@@ -133,7 +133,7 @@ export function fixturePresentation(fixture, watchedTeams, {result = false, spoi
     } else {
         accessibleName = `${spokenDate}, 홈 ${fixture?.home ?? '미확인'} 대 원정 ${fixture?.away ?? '미확인'}`;
         if (result) {
-            accessibleName += spoiler ? ', 결과 숨김' :
+            accessibleName += fixture?.result_pending ? ', 결과 확인 중' : spoiler ? ', 결과 숨김' :
                 `, 홈 ${fixture?.home_score ?? '미확인'} 대 원정 ${fixture?.away_score ?? '미확인'}`;
         }
     }
