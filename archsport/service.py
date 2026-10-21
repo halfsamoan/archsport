@@ -134,7 +134,8 @@ class Worker:
             context = getattr(self.provider, 'context', context)
             self._merge_finals(context, now)
             kickoff_alert, kickoff_match = self._kickoff_reminder(context, now) if not event_alert else (None, None)
-            if kickoff_alert and not event_alert:
+            # The reminder view draws from the alert itself; a live match or final keeps the slot.
+            if kickoff_alert and not selected:
                 selected = kickoff_match
             self.first, self.errors = False, 0
             live_seconds = max(300, self.config['poll_seconds']) if getattr(self.provider, 'live_only', False) else self.config['poll_seconds']

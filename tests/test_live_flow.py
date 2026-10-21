@@ -530,6 +530,30 @@ class ServiceTests(unittest.TestCase):
         self.assertFalse(second['visible'])
         self.assertIsNone(second['alert'])
 
+    def test_kickoff_reminder_for_another_team_keeps_the_live_match_selected(self):
+        barcelona = copy.deepcopy(self.current)
+        barcelona.update(id='barcelona-live', status='live')
+        fixture = {'id': 'match:lazio:parma:20300101', 'home': 'SS Lazio', 'away': 'Parma Calcio 1913',
+                   'status': 'scheduled', 'kickoff_utc': (NOW + timedelta(minutes=14)).isoformat(),
+                   'team_keys': ['lazio', None]}
+
+        class Provider:
+            context = {'upcoming_matches': [fixture], 'recent': []}
+            def load_context(self, now=None):
+                return self.context
+            def fetch(self):
+                return [copy.deepcopy(barcelona)]
+
+        config = {'mode': 'live', 'team_name': 'Barcelona', 'watch_teams': ['Barcelona', 'Lazio'],
+                  'poll_seconds': 300}
+        payload = Worker(config, self.store, Provider()).poll(NOW)
+        self.assertEqual(payload['alert']['kind'], 'kickoff')
+        self.assertEqual(payload['alert']['match_id'], fixture['id'])
+        self.assertEqual(payload['match']['id'], 'barcelona-live')
+        self.assertEqual(payload['health'], 'fresh')
+        self.assertTrue(payload['visible'])
+        self.assertEqual(payload['next_poll_seconds'], 300)
+
     def test_two_hour_kickoff_reminder(self):
         fixture = {'id': 'match:barcelona:sevilla:20261018', 'home': 'Barcelona', 'away': 'Sevilla',
                    'status': 'scheduled', 'kickoff_utc': (NOW + timedelta(hours=2)).isoformat(),
