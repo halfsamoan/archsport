@@ -40,7 +40,11 @@
     "separatorLight": "rgba(0, 0, 0, 0.08)",
     "accentWarningLight": "#8a4b00",
     "accentCriticalLight": "#b42318",
-    "focusLight": "#0057b8"
+    "focusLight": "#0057b8",
+    "actionPrimaryFill": "#0066cc",
+    "actionPrimaryFillHover": "#005bb5",
+    "criticalFill": "#c8102e",
+    "criticalFillHover": "#a50d26"
   },
   "motion": {
     "micro": 100,
