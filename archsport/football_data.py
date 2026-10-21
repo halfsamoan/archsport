@@ -16,6 +16,17 @@ WINDOW_DAYS = 7
 CACHE_SECONDS = 6 * 60 * 60
 LOOKBACK_DAYS = 28
 LOOKAHEAD_DAYS = 28
+# The free feed can briefly serve an old copy of a fixture list (2026-10-21: PSG–Barcelona
+# vanished hours before kickoff, so neither the 2 h reminder nor the live probe ran). A watched
+# fixture seen once stays scheduled from KNOWN_BEFORE before kickoff until KNOWN_AFTER after it.
+KNOWN_KEY = 'schedule-known:football-data'
+KNOWN_BEFORE = timedelta(days=2)
+KNOWN_AFTER = timedelta(hours=3)
+# After a watched match should have ended, re-read its window until the result arrives.
+RESULT_WAIT_FROM = timedelta(minutes=105)
+RESULT_WAIT_UNTIL = timedelta(hours=12)
+RESULT_RETRY_SECONDS = 30 * 60
+SETTLED = {'finished', 'postponed', 'cancelled', 'abandoned'}
 
 
 def date_windows(today, lookback=LOOKBACK_DAYS, lookahead=LOOKAHEAD_DAYS):
@@ -86,7 +97,7 @@ class FootballDataSchedule:
         except OSError:
             value = ''
         if not value:
-            raise ProviderError('football-data.org 일정 키가 없습니다. 설정 파일을 확인하세요.')
+            raise ProviderError('football-data.org 일정 키가 없습니다. 설정에서 일정 키를 입력하세요.')
         return value
 
     def _get(self, start, end, now):
@@ -123,6 +134,44 @@ class FootballDataSchedule:
             raise ProviderError('football-data.org 경기 목록을 읽을 수 없습니다.')
         return matches
 
+    def _watched_rows(self, rows):
+        for row in rows:
+            try:
+                item = normalize_match(row)
+            except (TypeError, ValueError, KeyError):
+                continue
+            if item['competition_code'] in COMPETITIONS and any(
+                    is_watched(side, self.watched) for side in (item['home'], item['away'])):
+                yield item
+
+    def _awaiting_result(self, rows, now):
+        for item in self._watched_rows(rows):
+            kickoff = datetime.fromisoformat(item['kickoff_utc'].replace('Z', '+00:00'))
+            if item['status'] not in SETTLED and RESULT_WAIT_FROM <= now - kickoff <= RESULT_WAIT_UNTIL:
+                return True
+        return False
+
+    def _keep_known(self, normalized, now):
+        present = {item['id'] for item in normalized}
+        known = self.store.cache_get(KNOWN_KEY, {})
+        if not isinstance(known, dict):
+            known = {}
+        kept = []
+        for identifier, item in known.items():
+            try:
+                kickoff = datetime.fromisoformat(item['kickoff_utc'].replace('Z', '+00:00'))
+            except (TypeError, ValueError, KeyError, AttributeError):
+                continue
+            if identifier not in present and -KNOWN_AFTER <= kickoff - now <= KNOWN_BEFORE:
+                kept.append({**item, 'schedule_missing': True})
+        remember = {}
+        for item in normalized + kept:
+            kickoff = datetime.fromisoformat(item['kickoff_utc'].replace('Z', '+00:00'))
+            if item['status'] == 'scheduled' and -KNOWN_AFTER <= kickoff - now <= KNOWN_BEFORE:
+                remember[item['id']] = {key: value for key, value in item.items() if key != 'schedule_missing'}
+        self.store.cache_set(KNOWN_KEY, remember)
+        return normalized + kept
+
     def fetch_context(self, now=None):
         now = now or datetime.now(timezone.utc)
         if now.tzinfo is None:
@@ -135,7 +184,9 @@ class FootballDataSchedule:
         for start, end in windows:
             cache_key = f'football-data:{start.isoformat()}:{end.isoformat()}'
             cached = self.store.cache_get(cache_key)
-            is_fresh = isinstance(cached, dict) and 0 <= now.timestamp() - cached.get('at', 0) < CACHE_SECONDS
+            age = now.timestamp() - cached.get('at', 0) if isinstance(cached, dict) else -1
+            is_fresh = 0 <= age < CACHE_SECONDS and not (
+                age >= RESULT_RETRY_SECONDS and self._awaiting_result(cached.get('matches', []), now))
             if is_fresh:
                 rows = cached.get('matches', [])
                 latest_cache_time = max(latest_cache_time, cached.get('at', 0))
@@ -176,6 +227,7 @@ class FootballDataSchedule:
             if not any(is_watched(side, self.watched) for side in (item['home'], item['away'])):
                 continue
             normalized.append(item)
+        normalized = self._keep_known(normalized, now)
         normalized.sort(key=lambda item: item['kickoff_utc'])
         self.matches = normalized
         future = [item for item in normalized if item['status'] == 'scheduled' and

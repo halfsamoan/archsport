@@ -80,7 +80,7 @@ class ApiFootball:
             if self.key_file.is_file():
                 self.key = self.key_file.read_text(encoding='utf-8').strip()
         if not self.key:
-            raise ProviderError('API 키가 없습니다. api-key 파일을 설정하세요.')
+            raise ProviderError('API-Football 키가 없습니다. 설정에서 키를 입력하세요.')
 
     def get(self, endpoint, **params):
         today = datetime.now(timezone.utc).date()

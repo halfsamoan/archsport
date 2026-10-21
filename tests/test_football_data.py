@@ -130,6 +130,54 @@ class FootballDataTests(unittest.TestCase):
         self.assertEqual(self.store.cache_get(stale_key), {'at': 0, 'matches': []})
         self.assertTrue(schedule.warning)
 
+    def test_watched_fixture_survives_a_refresh_that_briefly_drops_it(self):
+        # 2026-10-21: the free feed served an old list without PSG–Barcelona hours before
+        # kickoff; the remembered fixture must still drive the reminder and the live probe.
+        kickoff = NOW + timedelta(hours=8)
+        fixture = fd_match(300, 'Paris Saint-Germain FC', 'FC Barcelona',
+                           kickoff.strftime('%Y-%m-%dT%H:%M:%SZ'), 'CL')
+        responses = [[fixture], []]
+
+        def opener(request, **kwargs):
+            return Response(json.dumps({'matches': responses[0]}).encode())
+
+        schedule = FootballDataSchedule({'football_data_key_file': str(self.key_file)}, self.store, opener)
+        first = schedule.fetch_context(NOW)
+        self.assertEqual(len(first['upcoming_matches']), 1)
+        responses.pop(0)
+        # Past the six-hour cache, so every window refetches and the fixture is gone upstream.
+        context = schedule.fetch_context(NOW + timedelta(hours=6, minutes=5))
+        self.assertEqual([item['home'] for item in context['upcoming_matches']], ['Paris Saint-Germain FC'])
+        self.assertTrue(schedule.matches[0]['schedule_missing'])
+        self.assertEqual(schedule.matches[0]['status'], 'scheduled')
+        # Three hours after kickoff a missing fixture is no longer kept.
+        schedule.fetch_context(kickoff + timedelta(hours=3, minutes=1))
+        self.assertEqual(schedule.matches, [])
+
+    def test_window_refreshes_every_half_hour_until_a_watched_result_arrives(self):
+        kickoff = NOW - timedelta(hours=2)
+        stamp = kickoff.strftime('%Y-%m-%dT%H:%M:%SZ')
+        rows = [fd_match(301, 'Paris Saint-Germain FC', 'FC Barcelona', stamp, 'CL')]
+        calls = []
+
+        def opener(request, **kwargs):
+            calls.append(request)
+            return Response(json.dumps({'matches': rows}).encode())
+
+        schedule = FootballDataSchedule({'football_data_key_file': str(self.key_file)}, self.store, opener)
+        schedule.fetch_context(NOW)
+        full = len(calls)
+        schedule.fetch_context(NOW + timedelta(minutes=10))
+        self.assertEqual(len(calls), full)  # still fresh
+        schedule.fetch_context(NOW + timedelta(minutes=31))
+        self.assertGreater(len(calls), full)  # the window holding the unfinished match refetched
+        rows[0] = fd_match(301, 'Paris Saint-Germain FC', 'FC Barcelona', stamp, 'CL', 'FINISHED', (4, 2))
+        schedule.fetch_context(NOW + timedelta(minutes=62))
+        settled = len(calls)
+        context = schedule.fetch_context(NOW + timedelta(minutes=95))
+        self.assertEqual(len(calls), settled)  # result in: back to the six-hour cache
+        self.assertEqual(context['recent'][0]['away_score'], 2)
+
     def test_team_aliases_and_provider_neutral_fixture_match(self):
         self.assertEqual(canonical_team('FC Barcelona'), 'barcelona')
         self.assertEqual(canonical_team('SS Lazio'), 'lazio')

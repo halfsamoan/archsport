@@ -37,7 +37,7 @@ class CompositeProviderTests(unittest.TestCase):
         self.assertEqual(provider.fetch(), [])
         self.assertEqual(provider.context['upcoming_matches'], [scheduled])
         self.assertFalse(provider.context['live_available'])
-        self.assertIn('API 키', provider.warning)
+        self.assertIn('API-Football 키', provider.warning)
 
     def test_live_request_error_keeps_schedule_context(self):
         self.api_key.write_text('test-api-key', encoding='utf-8')
