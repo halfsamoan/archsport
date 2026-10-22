@@ -259,7 +259,8 @@ test('compact row fits the 34 px slab and the open notch has no forehead', async
     assert.doesNotMatch(css, /font-size: [\d.]+px/);
     const [, top, side, bottom] = css.match(/\.archsport-notch\.archsport-open \{ padding: (\d+)px (\d+)px (\d+)px;/).map(Number);
     assert.ok(top <= 12);
-    assert.equal(side, bottom);
+    // Island insets: the bottom never exceeds the sides, so the card sits concentric in the slab.
+    assert.ok(bottom <= side);
     // The slab height comes from the root's real padding, not a hand-tuned constant.
     const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
     assert.match(source, /chromeHeight: rootNode\.get_vertical_padding\(\) \+ rootNode\.get_length\('spacing'\)/);

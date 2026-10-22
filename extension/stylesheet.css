@@ -8,7 +8,7 @@
     box-shadow: none;
 }
 .archsport-notch StLabel, .archsport-notch StButton { font-family: 'Pretendard'; }
-.archsport-notch.archsport-open { padding: 10px 14px 14px; spacing: 8px; }
+.archsport-notch.archsport-open { padding: 10px 16px 12px; spacing: 6px; }
 .archsport-compact { spacing: 4px; min-height: 28px; }
 .archsport-compact-button { min-height: 28px; padding: 0 6px; border-radius: 14px; background-color: transparent; }
 .archsport-compact-button:hover { background-color: rgba(255, 255, 255, 0.08); }

@@ -662,6 +662,11 @@ export default class Archsport extends Extension {
             const identity = focusKey(new St.BoxLayout({style_class: 'archsport-identity', x_expand: true,
                 reactive: true, can_focus: true}), 'anchor');
             this._primaryFocus = identity;
+            // The title row is the island's own surface: a click on it folds the card.
+            identity.connect('button-release-event', () => {
+                this._toggle();
+                return Clutter.EVENT_STOP;
+            });
             // The scoreboard below already carries both marks; a kickoff reminder without one
             // borrows the watched club's real crest. The schedule view stays text-only.
             const scoreboardShown = Boolean(match) && match.status !== 'scheduled';
