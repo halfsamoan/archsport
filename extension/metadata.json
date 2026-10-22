@@ -2,8 +2,12 @@
   "uuid": "archsport@local",
   "name": "Archsport — Football Notch",
   "description": "Football schedules and live scores for Barcelona, Lazio, and Como.",
-  "shell-version": ["50"],
-  "version": 25,
+  "shell-version": [
+    "50"
+  ],
+  "version": 26,
   "settings-schema": "org.gnome.shell.extensions.archsport",
-  "session-modes": ["user"]
+  "session-modes": [
+    "user"
+  ]
 }
