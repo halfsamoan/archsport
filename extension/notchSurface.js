@@ -1,28 +1,17 @@
 import Cairo from 'cairo';
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {DESIGN} from './designTokens.js';
 import {notchGeometry} from './dockModel.js';
 
-// The surface continues the top panel as one opaque slab: concave ears where it
-// leaves the panel, vertical sides, a rounded bottom. Its colour is read from the
-// panel so the seam disappears; a faint downward lift and key line give material.
-export function createNotchSurface(content) {
+// The island continues the top panel as one opaque black slab: concave ears where it
+// leaves the panel, vertical sides, a rounded bottom. Like the Dynamic Island it is
+// always pure black, whatever the panel colour; a faint key line gives it an edge.
+export function createNotchSurface() {
     const surface = new St.Widget({layout_manager: new Clutter.BinLayout(),
         width: DESIGN.geometry.neckWidth, height: DESIGN.geometry.seedHeight,
         visible: false, clip_to_allocation: true});
-    let base = [0, 0, 0];
-    const readPanelColor = () => {
-        try {
-            const color = Main.panel.get_theme_node().get_background_color();
-            // A translucent panel theme cannot be matched; fall back to black.
-            base = color.alpha === 255 ? [color.red / 255, color.green / 255, color.blue / 255] : [0, 0, 0];
-        } catch (_error) {
-            base = [0, 0, 0];
-        }
-    };
-    readPanelColor();
+    const base = [0, 0, 0];
 
     const shape = new St.DrawingArea({reactive: false, x_expand: true, y_expand: true});
     shape.connect('repaint', area => {
@@ -45,10 +34,14 @@ export function createNotchSurface(content) {
             context.closePath();
         }
         const lift = DESIGN.material.lift;
-        const fill = new Cairo.LinearGradient(0, 0, 0, height);
-        fill.addColorStopRGB(0, ...base);
-        fill.addColorStopRGB(1, ...base.map(channel => channel + (1 - channel) * lift));
-        context.setSource(fill);
+        if (lift > 0) {
+            const fill = new Cairo.LinearGradient(0, 0, 0, height);
+            fill.addColorStopRGB(0, ...base);
+            fill.addColorStopRGB(1, ...base.map(channel => channel + (1 - channel) * lift));
+            context.setSource(fill);
+        } else {
+            context.setSourceRGB(...base);
+        }
         if (sliver) {
             context.fill();
         } else {
@@ -71,10 +64,6 @@ export function createNotchSurface(content) {
         context.$dispose();
     });
     surface.add_child(shape);
-    Main.panel.connectObject('style-changed', () => {
-        readPanelColor();
-        shape.queue_repaint();
-    }, surface);
 
     // Two reactive regions approximate the slab without the ears.
     const bodyHit = new St.Widget({reactive: true, can_focus: false, x_expand: true, y_expand: true});
@@ -103,15 +92,12 @@ export function createNotchSurface(content) {
         updateHitRegions();
         shape.queue_repaint();
     });
-    // Content keeps its final size and is revealed by the growing slab instead of
-    // being relaid out every frame of the morph. BinLayout would clamp it to the
-    // slab, so a fixed-layout holder allocates its preferred size, top-centred.
+    // Module content keeps its final size and is revealed by the growing slab instead of
+    // being relaid out every frame of the morph. BinLayout would clamp it to the slab,
+    // so a fixed-layout holder lets the dock place each module at its slot.
     const holder = new Clutter.Actor({layout_manager: new Clutter.FixedLayout(), x_expand: true, y_expand: true});
-    content.add_constraint(new Clutter.AlignConstraint({source: holder,
-        align_axis: Clutter.AlignAxis.X_AXIS, factor: 0.5}));
-    holder.add_child(content);
     surface.add_child(holder);
-    surface._notchContent = content;
+    surface._holder = holder;
     updateHitRegions();
     return surface;
 }

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape,
+import {DOCK_PROTOCOL, SNAP, buttonNumber, layoutIsland, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape,
     classifyOutsideSurface, dispatchOutsideDismiss, notchGeometry} from '../extension/dockModel.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement} from '../extension/uiModel.js';
 
@@ -43,25 +43,50 @@ test('goal announcements include score and scorer except in spoiler mode', () =>
 });
 import {enqueuePendingAlert, expirePendingAlerts, restorePendingAlerts, takePendingAlert} from '../extension/alertQueue.js';
 
-test('sport and memory notches share a centered row', () => {
-    assert.equal(DOCK_PROTOCOL, 6);
-    const [sport, memory] = layoutNotches([
-        {id: 'archsport', width: 360, order: 0},
-        {id: 'matci', width: 220, order: 1},
+test('compact modules share one island row below the panel', () => {
+    assert.equal(DOCK_PROTOCOL, 7);
+    const {island, slots} = layoutIsland([
+        {id: 'archsport@local', width: 200, height: 36, order: 0},
+        {id: 'notci@local/spotify', width: 56, height: 36, order: 2},
     ], {x: 0, y: 0, width: 1728, panelHeight: 32});
-    assert.equal(memory.x - sport.x - sport.width, 6);
-    assert.equal(sport.x + (sport.width + memory.width + 6) / 2, 864);
-    assert.equal(sport.y, 32);
+    assert.deepEqual(island, {x: 730, y: 32, width: 268, height: 36, expanded: false, ownerId: null});
+    assert.deepEqual(slots.get('archsport@local'), {x: 0, width: 200, shown: true});
+    assert.deepEqual(slots.get('notci@local/spotify'), {x: 212, width: 56, shown: true});
+    // Compact widths snap so a one-pixel text change never shifts the row.
+    assert.equal(SNAP, 8);
+    assert.equal(layoutIsland([{id: 'a', width: 61, height: 36}], {x: 0, y: 0, width: 1728}).slots.get('a').width, 64);
+    assert.equal(layoutIsland([{id: 'a', width: 65, height: 36}], {x: 0, y: 0, width: 1728}).slots.get('a').width, 72);
+});
+
+test('an expanded owner has the island to itself at its exact size', () => {
+    const {island, slots} = layoutIsland([
+        {id: 'archsport@local', width: 200, height: 36, order: 0},
+        {id: 'matci@local', width: 368, height: 240, order: 1, expanded: true, active: true},
+    ], {x: 0, y: 0, width: 1728, panelHeight: 32});
+    assert.deepEqual(island, {x: 680, y: 32, width: 368, height: 240, expanded: true, ownerId: 'matci@local'});
+    assert.equal(slots.get('archsport@local').shown, false);
+    assert.equal(slots.get('matci@local').shown, true);
+    // An owner wider than the monitor is clamped, never snapped.
+    const narrow = layoutIsland([{id: 'matci@local', width: 500, height: 250, expanded: true}], {x: 100, y: 0, width: 390});
+    assert.equal(narrow.island.width, 366);
+    assert.equal(narrow.island.x, 112);
 });
 
 test('manual memory review keeps priority over sport event', () => {
     assert.equal(canClaim({id: 'matci', priority: 100}, 'archsport', 80), false);
-    const [sport, memory] = layoutNotches([
-        {id: 'archsport', width: 500, order: 0},
-        {id: 'matci', width: 220, order: 1, active: true},
+    // Alert ladder: goal 80 > KakaoTalk 60 > Spotify peek 40 > matci suggestion 30.
+    assert.equal(canClaim({id: 'archsport', priority: 80}, 'kakao', 60), false);
+    assert.equal(canClaim({id: 'kakao', priority: 60}, 'spotify', 40), false);
+    assert.equal(canClaim({id: 'matci', priority: 30}, 'spotify', 40), true);
+    // Too narrow for the compact row: the active module stays, the companion is hidden.
+    const {island, slots} = layoutIsland([
+        {id: 'archsport', width: 500, height: 36, order: 0},
+        {id: 'matci', width: 220, height: 36, order: 1, active: true},
     ], {x: 0, y: 0, width: 600, panelHeight: 32});
-    assert.equal(sport.fallback, true);
-    assert.equal(memory.fallback, false);
+    assert.equal(island.width, 224);
+    assert.equal(slots.get('archsport').shown, false);
+    assert.equal(slots.get('matci').shown, true);
+    assert.equal(layoutIsland([], {x: 0, y: 0, width: 600}).island, null);
 });
 
 test('equal-priority manual open follows last-toggle ownership', () => {
@@ -245,6 +270,9 @@ test('compact row fits the 34 px slab and the open notch has no forehead', async
 test('content motion rides the slab curve and enters from the panel edge', () => {
     const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
     assert.match(source, /import \{DockParticipant, easeOnCurve\} from '\.\/notchDock\.js';/);
+    // The island draws the only slab; the app hands over its content tree.
+    assert.doesNotMatch(source, /createNotchSurface|addChrome\(|removeChrome\(/);
+    assert.match(source, /new DockParticipant\(\{id: this\.uuid, content: this\._root,/);
     assert.doesNotMatch(source, /\.ease\(\{/);
     assert.doesNotMatch(source, /EASE_OUT_CUBIC/);
     assert.match(source, /const drop = \{opacity: 0, translation_y: -DESIGN\.motion\.contentShift\};/);

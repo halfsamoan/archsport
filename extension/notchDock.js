@@ -3,29 +3,34 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Graphene from 'gi://Graphene';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import {DOCK_PROTOCOL, buttonNumber, layoutNotches, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape, isPointWithinNotch, classifyOutsideSurface,
-    shouldDismissOutside, dispatchOutsideDismiss, notchGeometry} from './dockModel.js';
+import {DOCK_PROTOCOL, buttonNumber, layoutIsland, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape,
+    isPointWithinNotch, classifyOutsideSurface, shouldDismissOutside, dispatchOutsideDismiss, notchGeometry} from './dockModel.js';
 import {DESIGN} from './designTokens.js';
+import {createNotchSurface} from './notchSurface.js';
 
-// One registry and one capture-phase listener for the two independently installed extensions.
-const KEY = `_archsportMatciNotchDock_v${DOCK_PROTOCOL}`;
+// One registry, one island per monitor and one capture-phase listener, shared by every
+// independently installed extension that ships this file (Archsport, matci, notci).
+const KEY = `_notchIslandDock_v${DOCK_PROTOCOL}`;
 const OPEN_MS = DESIGN.motion.expand;
 const CLOSE_MS = DESIGN.motion.collapse;
+const MICRO_MS = DESIGN.motion.micro;
 const [CURVE_X1, CURVE_Y1, CURVE_X2, CURVE_Y2] = DESIGN.motion.curve;
 
 function layoutSourceHash() {
     let hash = 2166136261;
     // Geometry values are part of the contract: two builds that draw or hit-test
     // different slabs must not share one dock silently.
-    const contract = [`protocol=${DOCK_PROTOCOL}`, `open=${OPEN_MS}`, `close=${CLOSE_MS}`,
+    const contract = [`protocol=${DOCK_PROTOCOL}`, `open=${OPEN_MS}`, `close=${CLOSE_MS}`, `micro=${MICRO_MS}`,
         `curve=${DESIGN.motion.curve}`, JSON.stringify(DESIGN.geometry), JSON.stringify(DESIGN.radius),
-        disconnectCapture, layoutNotches, canClaim, isActorWithin, isPointWithinActor,
-        pointInNotchShape, isPointWithinNotch, notchGeometry,
+        JSON.stringify(DESIGN.material), JSON.stringify(DESIGN.spacing),
+        disconnectCapture, layoutIsland, canClaim, isActorWithin, isPointWithinActor,
+        pointInNotchShape, isPointWithinNotch, notchGeometry, createNotchSurface,
         classifyOutsideSurface, shouldDismissOutside, dispatchOutsideDismiss,
-        eventCoordinates, buttonNumber, clearMorph, allocationFor, easeOnCurve, morph, hideActor, showActor,
+        eventCoordinates, buttonNumber, animationsEnabled, clearMorph, allocationFor, easeOnCurve, morph,
+        hideSlab, showSlab, slabFor, destroySlabs, attach, detach, placeContent,
         insideActiveSurface, getDock, DockParticipant]
         .map(fn => typeof fn === 'string' ? fn : fn.toString()).join('|');
-    for (const char of `${contract}|capture-dismiss-v5|slab-v1`) {
+    for (const char of `${contract}|capture-dismiss-v5|island-v1`) {
         hash ^= char.charCodeAt(0);
         hash = Math.imul(hash, 16777619);
     }
@@ -52,16 +57,22 @@ function eventCoordinates(event) {
     }
 }
 
-function clearMorph(participant) {
-    if (participant.fitSource) GLib.source_remove(participant.fitSource);
-    participant.fitSource = 0;
-    participant.actor?.remove_all_transitions();
+function animationsEnabled(dock) {
+    try {
+        return dock.animations.get_boolean('enable-animations');
+    } catch (_error) {
+        return false;
+    }
+}
+
+function clearMorph(slab) {
+    slab.surface?.remove_all_transitions();
 }
 
 // Placements describe the body; the slab adds its ears on both sides.
-function allocationFor(placement) {
-    const {ear} = notchGeometry(placement.height, placement.width);
-    return {x: placement.x - ear, y: placement.y, width: placement.width + 2 * ear, height: placement.height};
+function allocationFor(island) {
+    const {ear} = notchGeometry(island.height, island.width);
+    return {x: island.x - ear, y: island.y, width: island.width + 2 * ear, height: island.height};
 }
 
 const EASE_OPTIONS = new Set(['duration', 'delay', 'mode', 'onComplete', 'onStopped', 'repeatCount', 'autoReverse']);
@@ -81,21 +92,16 @@ function morph(actor, target, duration, onComplete) {
     easeOnCurve(actor, {...target, duration, onComplete});
 }
 
-function hideActor(dock, participant, animate = true) {
-    const actor = participant.actor;
-    if (!actor || participant.disposed) return;
-    if (participant.closing && animate) return;
-    clearMorph(participant);
-    participant.transitionId++;
-    participant.closing = false;
-    participant.targetGeometry = null;
-    const transitionId = participant.transitionId;
-    let duration = 0;
-    try {
-        if (animate && participant.animations.get_boolean('enable-animations')) duration = CLOSE_MS;
-    } catch (_error) {
-        duration = 0;
-    }
+function hideSlab(dock, slab, animate = true) {
+    const actor = slab.surface;
+    if (!actor || dock.shuttingDown) return;
+    if (slab.closing && animate) return;
+    clearMorph(slab);
+    slab.transitionId++;
+    slab.closing = false;
+    slab.targetGeometry = null;
+    const transitionId = slab.transitionId;
+    const duration = animate && animationsEnabled(dock) ? CLOSE_MS : 0;
     if (!actor.visible || !duration) {
         try {
             actor.visible = false;
@@ -103,89 +109,184 @@ function hideActor(dock, participant, animate = true) {
         } catch (_error) { /* Shell owns final actor disposal */ }
         return;
     }
-    participant.closing = true;
+    slab.closing = true;
     try {
         // Back into the panel edge: the slab retracts to the seed sliver it grew from.
         const center = actor.x + actor.width / 2;
         morph(actor, {x: center - DESIGN.geometry.neckWidth / 2, width: DESIGN.geometry.neckWidth,
             height: DESIGN.geometry.seedHeight}, duration, () => {
-            if (dock.shuttingDown || participant.disposed || participant.transitionId !== transitionId)
-                return;
-            participant.closing = false;
-            if (!participant.state.visible || participant.lastFallback) {
+            if (dock.shuttingDown || slab.transitionId !== transitionId) return;
+            slab.closing = false;
+            if (!slab.island) {
                 try { actor.visible = false; } catch (_error) { return; }
             }
             try { actor.opacity = 255; } catch (_error) {}
         });
     } catch (_error) {
-        participant.closing = false;
+        slab.closing = false;
         try { actor.visible = false; } catch (_ignored) {}
     }
 }
 
-function showActor(dock, participant, placement) {
-    const actor = participant.actor;
-    if (!actor || participant.disposed || dock.shuttingDown) return;
+function showSlab(dock, slab, island) {
+    const actor = slab.surface;
+    if (!actor || dock.shuttingDown) return;
     const wasHidden = !actor.visible;
-    const slab = allocationFor(placement);
-    const target = `${slab.x}:${slab.y}:${slab.width}:${slab.height}`;
-    if (!wasHidden && !participant.closing && participant.targetGeometry === target) return;
-    clearMorph(participant);
-    participant.transitionId++;
-    participant.closing = false;
-    participant.targetGeometry = target;
-    const transitionId = participant.transitionId;
+    const allocation = allocationFor(island);
+    const target = `${allocation.x}:${allocation.y}:${allocation.width}:${allocation.height}`;
+    if (!wasHidden && !slab.closing && slab.targetGeometry === target) return;
+    clearMorph(slab);
+    slab.transitionId++;
+    slab.closing = false;
+    slab.targetGeometry = target;
     try {
-        let duration = 0;
-        try {
-            if (participant.animations.get_boolean('enable-animations')) duration = OPEN_MS;
-        } catch (_error) {
-            duration = 0;
-        }
-        const content = actor._notchContent;
-        const fitContent = () => content?.set_size(placement.width, placement.height);
+        const duration = animationsEnabled(dock) ? OPEN_MS : 0;
         if (wasHidden) {
-            const center = slab.x + slab.width / 2;
-            actor.set_position(center - DESIGN.geometry.neckWidth / 2, slab.y);
+            const center = allocation.x + allocation.width / 2;
+            actor.set_position(center - DESIGN.geometry.neckWidth / 2, allocation.y);
             actor.set_size(DESIGN.geometry.neckWidth, DESIGN.geometry.seedHeight);
             actor.visible = true;
         }
         actor.opacity = 255;
         if (!duration) {
-            fitContent();
-            actor.set_position(slab.x, slab.y);
-            actor.set_size(slab.width, slab.height);
+            actor.set_position(allocation.x, allocation.y);
+            actor.set_size(allocation.width, allocation.height);
             return;
         }
-        // Content is revealed at its final size. Only a collapse keeps the old size
-        // until the slab has settled, so the fading expanded content is not reflowed.
-        const shrinking = !wasHidden && (slab.height < actor.height || slab.width < actor.width);
-        const collapsing = shrinking && !placement.expanded;
-        if (!collapsing) fitContent();
-        // The expanded content has faded out after micro ms; from then on the compact
-        // content can settle while the slab is still shrinking.
-        if (collapsing) {
-            participant.fitSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, DESIGN.motion.micro, () => {
-                participant.fitSource = 0;
-                if (!participant.disposed && participant.transitionId === transitionId) fitContent();
-                return GLib.SOURCE_REMOVE;
-            });
-        }
-        morph(actor, slab, shrinking ? CLOSE_MS : duration);
+        const shrinking = !wasHidden && (allocation.height < actor.height || allocation.width < actor.width);
+        morph(actor, allocation, shrinking ? CLOSE_MS : duration);
     } catch (_error) {
         // A stale actor is left to Shell teardown; do not retry UI work during shutdown.
     }
 }
 
-function insideActiveSurface(participant, event) {
+function slabFor(dock, key) {
+    let slab = dock.slabs.get(key);
+    if (slab) return slab;
+    try {
+        const surface = createNotchSurface();
+        Main.layoutManager.addChrome(surface, {affectsStruts: false, trackFullscreen: false});
+        slab = {key, surface, holder: surface._holder, island: null, targetGeometry: null, transitionId: 0, closing: false};
+        dock.slabs.set(key, slab);
+        return slab;
+    } catch (_error) {
+        return null;
+    }
+}
+
+function destroySlabs(dock) {
+    for (const slab of dock.slabs.values()) {
+        try { Main.layoutManager.removeChrome(slab.surface); } catch (_error) {}
+        try { slab.surface.destroy(); } catch (_error) {}
+    }
+    dock.slabs.clear();
+}
+
+// A module's content is reparented into the island; the dock never destroys it.
+function attach(slab, participant) {
+    const content = participant.content;
+    if (!content || !slab) return;
+    try {
+        if (content.get_parent() === slab.holder) return;
+        content.get_parent()?.remove_child(content);
+        if (!content._notchAlign) {
+            content._notchAlign = new Clutter.AlignConstraint({align_axis: Clutter.AlignAxis.X_AXIS, factor: 0.5});
+            content.add_constraint(content._notchAlign);
+        }
+        content._notchAlign.source = slab.holder;
+        content.visible = false;
+        content.opacity = 255;
+        slab.holder.add_child(content);
+        participant.shown = false;
+    } catch (_error) { /* Shell is tearing the actor down */ }
+}
+
+function detach(participant) {
+    const content = participant.content;
+    if (!content) return;
+    try {
+        content.remove_all_transitions();
+        if (content._notchAlign) content.remove_constraint(content._notchAlign);
+        content._notchAlign = null;
+        content.get_parent()?.remove_child(content);
+        content.translation_x = 0;
+        content.visible = true;
+        content.opacity = 255;
+    } catch (_error) {}
+    participant.shown = false;
+}
+
+// Content is placed at its slot and crossfaded when a module enters or leaves an island
+// that is already showing; the growing slab reveals a module when the island itself appears.
+function placeContent(dock, slab, participant, slot, island) {
+    const content = participant.content;
+    if (!content || participant.disposed) return;
+    const show = Boolean(slot?.shown && island && slab);
+    const slabVisible = Boolean(slab?.surface?.visible && !slab.closing);
+    const animate = animationsEnabled(dock);
+    if (participant.fitSource) GLib.source_remove(participant.fitSource);
+    participant.fitSource = 0;
+    participant.fadeId = (participant.fadeId ?? 0) + 1;
+    const fadeId = participant.fadeId;
+    try {
+        if (show) {
+            content.translation_x = slot.x + slot.width / 2 - island.width / 2;
+            const fit = () => content.set_size(slot.width, island.height);
+            // Only a collapse keeps the old size until the expanded content has faded, so it is not reflowed.
+            const collapsing = participant.shown && participant.wasExpanded && !island.expanded && slabVisible && animate;
+            if (collapsing) {
+                participant.fitSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, MICRO_MS, () => {
+                    participant.fitSource = 0;
+                    if (!participant.disposed && participant.fadeId === fadeId) fit();
+                    return GLib.SOURCE_REMOVE;
+                });
+            } else {
+                fit();
+            }
+            if (!participant.shown) {
+                content.remove_transition('opacity');
+                content.visible = true;
+                if (slabVisible && animate) {
+                    content.opacity = 0;
+                    easeOnCurve(content, {opacity: 255, duration: MICRO_MS, delay: MICRO_MS});
+                } else {
+                    content.opacity = 255;
+                }
+            }
+            participant.wasExpanded = island.expanded;
+        } else if (participant.shown) {
+            content.remove_transition('opacity');
+            if (slabVisible && animate) {
+                easeOnCurve(content, {opacity: 0, duration: MICRO_MS, onComplete: () => {
+                    if (participant.disposed || participant.fadeId !== fadeId) return;
+                    try {
+                        content.visible = false;
+                        content.opacity = 255;
+                    } catch (_error) {}
+                }});
+            } else {
+                content.visible = false;
+                content.opacity = 255;
+            }
+            participant.wasExpanded = false;
+        } else {
+            content.visible = false;
+        }
+        participant.shown = show;
+    } catch (_error) {
+        // A stale actor is left to Shell teardown.
+    }
+}
+
+function insideActiveSurface(dock, participant, event) {
     const {x, y} = eventCoordinates(event);
     let source = null;
     try { source = event.get_source(); } catch (_error) {}
-    // Preserve only the active notch's own opener; another app's panel button is outside.
+    // Preserve only the active module's own opener; another app's panel button is outside.
     let trigger = null;
     try { trigger = participant.triggerActor?.(); } catch (_error) {}
-    return classifyOutsideSurface({dockActor: participant.actor, ownerTrigger: trigger,
-        eventSource: source, x, y});
+    return classifyOutsideSurface({dockActor: dock.slabs.get(participant.slabKey)?.surface ?? null,
+        ownerTrigger: trigger, eventSource: source, x, y});
 }
 
 function getDock() {
@@ -195,6 +296,8 @@ function getDock() {
         owner: GLib.uuid_string_random(),
         sourceHash: layoutSourceHash(),
         participants: new Map(), active: null,
+        slabs: new Map(),
+        animations: new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}),
         shuttingDown: false,
         captureStage: global.stage,
         captureId: 0,
@@ -212,40 +315,47 @@ function getDock() {
             for (const participant of this.participants.values()) {
                 let monitor = null;
                 try { monitor = participant.monitor(); } catch (_error) {}
-                if (!monitor) {
-                    participant.lastFallback = false;
-                    hideActor(this, participant, false);
-                    continue;
-                }
-                if (!participant.state.visible) {
-                    participant.lastFallback = false;
-                    hideActor(this, participant, true);
+                participant.lastFallback = false;
+                if (!monitor || !participant.state.visible) {
+                    placeContent(this, null, participant, null, null);
                     continue;
                 }
                 const key = `${monitor.x}:${monitor.y}:${monitor.width}`;
                 if (!groups.has(key)) groups.set(key, {monitor, entries: []});
                 groups.get(key).entries.push({id: participant.id, ...participant.state,
                     order: participant.order, active: this.active?.id === participant.id});
+                participant.slabKey = key;
             }
-            for (const {monitor, entries} of groups.values()) {
+            for (const [key, {monitor, entries}] of groups) {
                 let panelHeight = 0;
                 try {
                     if (monitor === Main.layoutManager.primaryMonitor) panelHeight = Main.panel.height;
                 } catch (_error) {
                     if (this.shuttingDown) return;
                 }
-                // Two slabs keep clear of each other's ears instead of bridging at the panel.
-                for (const placement of layoutNotches(entries, {...monitor, panelHeight}, 2 * DESIGN.geometry.earMax)) {
-                    const participant = this.participants.get(placement.id);
-                    if (!participant || participant.disposed) continue;
-                    participant.lastFallback = placement.fallback;
-                    if (placement.fallback) {
-                        hideActor(this, participant, false);
-                    } else {
-                        showActor(this, participant, placement);
-                    }
-                    try { participant.onPlacement?.(placement); } catch (_error) {}
+                const {island, slots} = layoutIsland(entries, {...monitor, panelHeight});
+                const slab = slabFor(this, key);
+                if (!slab) continue;
+                slab.island = island;
+                for (const entry of entries) {
+                    const participant = this.participants.get(entry.id);
+                    const slot = slots.get(entry.id);
+                    if (!participant || participant.disposed || !slot) continue;
+                    // Hidden by a too-narrow monitor, not by another module's expansion.
+                    participant.lastFallback = Boolean(island && !island.expanded && !slot.shown);
+                    attach(slab, participant);
+                    placeContent(this, slab, participant, slot, island);
+                    try {
+                        participant.onPlacement?.(island ? {x: island.x + slot.x, y: island.y, width: slot.width,
+                            height: island.height, expanded: island.expanded, shown: slot.shown} : null);
+                    } catch (_error) {}
                 }
+                if (island) showSlab(this, slab, island); else hideSlab(this, slab, true);
+            }
+            for (const [key, slab] of this.slabs) {
+                if (groups.has(key)) continue;
+                slab.island = null;
+                hideSlab(this, slab, true);
             }
         },
     };
@@ -253,7 +363,7 @@ function getDock() {
         if (dock.shuttingDown) return Clutter.EVENT_PROPAGATE;
         if (event.type() !== Clutter.EventType.BUTTON_PRESS) return Clutter.EVENT_PROPAGATE;
         const owner = dock.active && dock.participants.get(dock.active.id);
-        const inside = owner ? insideActiveSurface(owner, event) : null;
+        const inside = owner ? insideActiveSurface(dock, owner, event) : null;
         if (owner) {
             try {
                 dispatchOutsideDismiss({eventType: event.type(),
@@ -273,10 +383,10 @@ function getDock() {
 }
 
 export class DockParticipant {
-    constructor({id, actor, monitor, order = 0, onYield, onOutside, onPlacement,
+    constructor({id, content, monitor, order = 0, onYield, onOutside, onPlacement,
         onShellShutdown, triggerActor}) {
         this.id = id;
-        this.actor = actor;
+        this.content = content;
         this.monitor = monitor;
         this.order = order;
         this.onYield = onYield;
@@ -284,12 +394,12 @@ export class DockParticipant {
         this.onPlacement = onPlacement;
         this.onShellShutdown = onShellShutdown;
         this.triggerActor = triggerActor;
-        this.animations = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
-        this.targetGeometry = null;
         this.lastFallback = false;
-        this.transitionId = 0;
         this.fitSource = 0;
-        this.closing = false;
+        this.fadeId = 0;
+        this.shown = false;
+        this.wasExpanded = false;
+        this.slabKey = null;
         this.disposed = false;
         this.state = {width: 360, height: 46, visible: false, expanded: false};
         this.dock = getDock();
@@ -323,10 +433,7 @@ export class DockParticipant {
             if (this.dock.shuttingDown) return;
         }
         const geometry = monitor ? `${monitor.x}:${monitor.y}:${monitor.width}:${panelHeight}` : '';
-        const expectedVisible = Boolean(this.state.visible && !this.lastFallback);
-        let actorVisible = false;
-        try { actorVisible = this.actor.visible; } catch (_error) {}
-        if (changed || geometry !== this.geometry || actorVisible !== expectedVisible) {
+        if (changed || geometry !== this.geometry) {
             this.geometry = geometry;
             this.dock.reflow();
         }
@@ -335,26 +442,22 @@ export class DockParticipant {
     destroy() {
         if (this.disposed) return;
         this.disposed = true;
-        clearMorph(this);
+        if (this.fitSource) GLib.source_remove(this.fitSource);
+        this.fitSource = 0;
         const dock = this.dock;
         if (!dock) return;
         dock.participants.delete(this.id);
         if (dock.active?.id === this.id) dock.active = null;
-        if (!dock.shuttingDown) {
-            hideActor(dock, this, false);
-            if (!dock.participants.size) {
-                disconnectCapture(dock);
-                try {
-                    if (Main.layoutManager[KEY] === dock) delete Main.layoutManager[KEY];
-                } catch (_error) {}
-            } else {
-                dock.reflow();
-            }
-        } else if (!dock.participants.size) {
+        if (!dock.shuttingDown) detach(this);
+        if (!dock.participants.size) {
+            disconnectCapture(dock);
+            if (!dock.shuttingDown) destroySlabs(dock);
             try {
                 if (Main.layoutManager[KEY] === dock) delete Main.layoutManager[KEY];
             } catch (_error) {}
+        } else if (!dock.shuttingDown) {
+            dock.reflow();
         }
-        this.dock = this.actor = this.animations = this.triggerActor = null;
+        this.dock = this.content = this.triggerActor = null;
     }
 }

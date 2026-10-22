@@ -1,6 +1,8 @@
 // Pure geometry shared by the native dock, web preview, and Node checks.
 import {DESIGN} from './designTokens.js';
-export const DOCK_PROTOCOL = 6;
+export const DOCK_PROTOCOL = 7;
+// Compact widths snap so a module whose text changes by a pixel does not jitter the island.
+export const SNAP = 8;
 
 // One slab continuing the top panel: concave ears at the top corners, vertical
 // sides, rounded bottom. Ears grow with height; low slabs get a smaller radius.
@@ -88,21 +90,35 @@ export function dispatchOutsideDismiss(input, onDismiss, surface = {}) {
     return true;
 }
 
-export function layoutNotches(entries, monitor, gap = 6, margin = 12) {
+// One island per monitor. An expanded owner has the island to itself; otherwise every
+// compact module sits in one row. Slot x is relative to the island body.
+export function layoutIsland(entries, monitor, gap = DESIGN.spacing.compactGap, margin = 12) {
     const available = Math.max(1, monitor.width - margin * 2);
-    const items = entries.map(entry => ({...entry,
-        width: Math.min(Math.max(1, entry.width), available), fallback: false,
-    })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
-    if (items.reduce((sum, item) => sum + item.width, 0) + gap * Math.max(0, items.length - 1) > available) {
-        const winner = items.find(item => item.active) ?? items[0];
-        for (const item of items) item.fallback = item !== winner;
+    const y = monitor.y + (monitor.panelHeight ?? 0);
+    const slots = new Map();
+    const sorted = entries.filter(entry => entry.visible !== false)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id.localeCompare(b.id));
+    if (!sorted.length) return {island: null, slots};
+    const owner = sorted.find(entry => entry.expanded && entry.active) ?? sorted.find(entry => entry.expanded);
+    if (owner) {
+        const width = Math.min(Math.max(1, owner.width), available);
+        for (const entry of sorted) slots.set(entry.id, {x: 0, width, shown: entry === owner});
+        return {island: {x: Math.round(monitor.x + (monitor.width - width) / 2), y, width,
+            height: Math.max(1, owner.height), expanded: true, ownerId: owner.id}, slots};
     }
-    const visible = items.filter(item => !item.fallback);
-    const width = visible.reduce((sum, item) => sum + item.width, 0) + gap * Math.max(0, visible.length - 1);
-    let x = Math.round(monitor.x + (monitor.width - width) / 2);
-    return items.map(item => {
-        const position = {...item, x, y: monitor.y + (monitor.panelHeight ?? 0)};
-        if (!item.fallback) x += item.width + gap;
-        return position;
-    });
+    const items = sorted.map(entry => ({...entry,
+        width: Math.min(available, Math.ceil(Math.max(1, entry.width) / SNAP) * SNAP)}));
+    const total = list => list.reduce((sum, entry) => sum + entry.width, 0) + gap * Math.max(0, list.length - 1);
+    let shown = items;
+    // Too narrow for the row: keep the active module (or the first) and hide the others.
+    if (total(items) > available) shown = [items.find(entry => entry.active) ?? items[0]];
+    const width = total(shown);
+    let x = 0;
+    for (const item of items) {
+        const on = shown.includes(item);
+        slots.set(item.id, {x, width: item.width, shown: on});
+        if (on) x += item.width + gap;
+    }
+    return {island: {x: Math.round(monitor.x + (monitor.width - width) / 2), y, width,
+        height: Math.max(1, ...shown.map(entry => entry.height)), expanded: false, ownerId: null}, slots};
 }

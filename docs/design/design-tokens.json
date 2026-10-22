@@ -6,7 +6,8 @@
     "md": 12,
     "lg": 16,
     "xl": 24,
-    "between": 20
+    "between": 20,
+    "compactGap": 12
   },
   "radius": {
     "surface": 22,
@@ -14,20 +15,20 @@
   },
   "color": {
     "surfacePrimary": "#000000",
-    "surfaceElevated": "#23252a",
-    "labelPrimary": "#f5f5f7",
-    "labelSecondary": "#a1a1a8",
-    "labelTertiary": "#808087",
-    "separatorSubtle": "rgba(255, 255, 255, 0.07)",
+    "surfaceElevated": "rgba(255, 255, 255, 0.14)",
+    "labelPrimary": "#ffffff",
+    "labelSecondary": "#a1a1a6",
+    "labelTertiary": "#8e8e93",
+    "separatorSubtle": "rgba(255, 255, 255, 0.08)",
     "focus": "#0a84ff",
     "accentPositive": "#30d158",
-    "accentWarning": "#ff9230",
-    "accentCritical": "#ff4245",
-    "surfaceHover": "#303238",
-    "surfacePressed": "#3a3c43",
-    "surfaceTrack": "#292b30",
-    "hoverWash": "rgba(255, 255, 255, 0.07)",
-    "pressedWash": "rgba(255, 255, 255, 0.12)",
+    "accentWarning": "#ff9f0a",
+    "accentCritical": "#ff453a",
+    "surfaceHover": "rgba(255, 255, 255, 0.18)",
+    "surfacePressed": "rgba(255, 255, 255, 0.24)",
+    "surfaceTrack": "rgba(255, 255, 255, 0.12)",
+    "hoverWash": "rgba(255, 255, 255, 0.08)",
+    "pressedWash": "rgba(255, 255, 255, 0.14)",
     "actionPrimary": "#0a84ff",
     "actionHover": "#0077ed",
     "labelDisabled": "#838b97",
@@ -44,7 +45,9 @@
     "actionPrimaryFill": "#0066cc",
     "actionPrimaryFillHover": "#005bb5",
     "criticalFill": "#c8102e",
-    "criticalFillHover": "#a50d26"
+    "criticalFillHover": "#a50d26",
+    "brandKakao": "#fee500",
+    "brandSpotify": "#1db954"
   },
   "motion": {
     "micro": 100,
@@ -64,12 +67,14 @@
       0.8,
       0.2,
       1
-    ]
+    ],
+    "alertGap": 300,
+    "hoverResume": 100
   },
   "control": {
     "icon": 15,
     "size": 28,
-    "compactHeight": 34
+    "compactHeight": 36
   },
   "shadow": {
     "surface": "none"
@@ -80,20 +85,26 @@
     "primary": 14,
     "secondary": 12,
     "caption": 11,
-    "compactScore": 18
+    "compactScore": 18,
+    "accent": 13
   },
   "geometry": {
     "archCompact": 200,
     "archExpanded": 344,
-    "archContext": 388,
+    "archContext": 464,
     "matciExpanded": 368,
     "neckWidth": 104,
     "earMin": 6,
     "earMax": 14,
-    "seedHeight": 6
+    "seedHeight": 6,
+    "expandedWide": 464,
+    "kakaoAlertHeight": 96,
+    "kakaoAlertHeightShort": 80,
+    "spotifyExpandedHeight": 168,
+    "spotifyCompact": 56
   },
   "material": {
-    "keyLineAlpha": 0.07,
-    "lift": 0.03
+    "keyLineAlpha": 0.08,
+    "lift": 0
   }
 }

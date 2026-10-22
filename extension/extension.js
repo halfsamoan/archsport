@@ -11,7 +11,6 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import {DockParticipant, easeOnCurve} from './notchDock.js';
 import {isActorWithin} from './dockModel.js';
-import {createNotchSurface} from './notchSurface.js';
 import {DESIGN} from './designTokens.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement, latestEvent,
     liveMinuteLabel} from './uiModel.js';
@@ -90,8 +89,6 @@ export default class Archsport extends Extension {
             this._render();
             if (this._dock.state.visible) this._focusPrimary();
         };
-        this._surface = createNotchSurface(this._root);
-        Main.layoutManager.addChrome(this._surface, {affectsStruts: false, trackFullscreen: false});
         const staleIndicator = Main.panel.statusArea[this.uuid];
         if (staleIndicator) {
             Main.panel.statusArea[this.uuid] = null;
@@ -111,7 +108,7 @@ export default class Archsport extends Extension {
         this._indicator.menu.addAction('Archsport 설정', () => this._openPreferences());
         this._indicator.menu.addAction('데이터 다시 연결', () => this._restartWorker());
         Main.panel.addToStatusArea(this.uuid, this._indicator);
-        this._dock = new DockParticipant({id: this.uuid, actor: this._surface,
+        this._dock = new DockParticipant({id: this.uuid, content: this._root,
             monitor: () => this._monitor(), triggerActor: () => this._indicator, order: 0,
             onOutside: () => this._toggle(), onShellShutdown: () => this._beginShellShutdown(),
             onYield: () => {
@@ -1044,9 +1041,8 @@ export default class Archsport extends Extension {
         }
         this._signals = [];
         this._dock?.destroy();
-        if (!this._shellEnding && this._surface) {
-            try { Main.layoutManager.removeChrome(this._surface); } catch (_error) {}
-            try { this._surface.destroy(); } catch (_error) {}
+        if (!this._shellEnding && this._root) {
+            try { this._root.destroy(); } catch (_error) {}
         }
         if (!this._shellEnding && this._indicator) {
             try {
@@ -1054,7 +1050,7 @@ export default class Archsport extends Extension {
                 this._indicator.destroy();
             } catch (_error) { /* Shell already owns actor disposal */ }
         }
-        this._surface = this._root = this._indicator = this._settings = this._interface = this._payload = this._dock = null;
+        this._root = this._indicator = this._settings = this._interface = this._payload = this._dock = null;
         this._activeAlert = this._scoreFeedback = this._pendingAlertRecord = null;
         this._pendingAlerts = [];
     }
