@@ -634,6 +634,7 @@ export default class Archsport extends Extension {
         let expandedScroll = null;
         // [actor, from, to] entrances; started only after the slab shows the tree.
         const entrances = [];
+        const flashes = [];
         if (!expanded) {
             this._root.remove_style_class_name('archsport-open');
             const row = new St.BoxLayout({style_class: 'archsport-compact',
@@ -729,6 +730,7 @@ export default class Archsport extends Extension {
                 scoreLabel.accessible_name = spokenScore;
                 scoreLabel.y_align = Clutter.ActorAlign.CENTER;
                 if (incoming?.kind === 'score') {
+                    flashes.push(scoreLabel);
                     // While opening, the body already drops in; a rising score would move against it.
                     if (!opening) {
                         entrances.push([scoreLabel, {opacity: 0, translation_y: 4},
@@ -907,6 +909,19 @@ export default class Archsport extends Extension {
                 easeOnCurve(actor, to);
             }
         }
+        // A goal lights the score green for two event beats, then it settles back to white.
+        if (this._flashTimer) GLib.source_remove(this._flashTimer);
+        this._flashTimer = 0;
+        if (flashes.length) {
+            for (const actor of flashes) actor.add_style_class_name('archsport-score-flash');
+            this._flashTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2 * DESIGN.motion.event, () => {
+                this._flashTimer = 0;
+                for (const actor of flashes) {
+                    try { actor.remove_style_class_name('archsport-score-flash'); } catch (_error) {}
+                }
+                return GLib.SOURCE_REMOVE;
+            });
+        }
         this._renderedExpanded = expanded;
         this._root.accessible_name = `Archsport. ${match ? `${match.home} 대 ${match.away}, ${spokenScore}` : '경기 정보'}. ${clock}`;
         if (this._primaryFocus) this._primaryFocus.accessible_name = this._root.accessible_name;
@@ -1032,7 +1047,8 @@ export default class Archsport extends Extension {
         if (this._closingTimer) GLib.source_remove(this._closingTimer);
         if (this._announcementTimer) GLib.source_remove(this._announcementTimer);
         if (this._minuteTimer) GLib.source_remove(this._minuteTimer);
-        this._timer = this._pendingAlertTimer = this._closingTimer = this._announcementTimer = this._minuteTimer = 0;
+        if (this._flashTimer) GLib.source_remove(this._flashTimer);
+        this._timer = this._pendingAlertTimer = this._closingTimer = this._announcementTimer = this._minuteTimer = this._flashTimer = 0;
         this._queuedAnnouncement = null;
         if (this._sleepSubscription) Gio.DBus.system.signal_unsubscribe(this._sleepSubscription);
         this._sleepSubscription = 0;

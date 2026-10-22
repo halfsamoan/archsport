@@ -91,5 +91,6 @@
 /* Digits that change in place keep their width. */
 .archsport-team, .archsport-score, .archsport-live, .archsport-caption, .archsport-date,
 .archsport-result-score, .archsport-stat, .archsport-event { font-feature-settings: "tnum"; }
-/* Last so it wins over .archsport-caption / .archsport-live at equal specificity. */
+/* Last so they win over .archsport-caption / .archsport-live / .archsport-score at equal specificity. */
 .archsport-live-now { color: {{color.accentPositive}}; }
+.archsport-score-flash { color: {{color.accentPositive}}; }
