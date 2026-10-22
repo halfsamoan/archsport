@@ -1,15 +1,17 @@
-"""Check paired design sources locally or against the peer GitHub branch."""
+"""Check the shared island core against the sibling repositories or their GitHub branches."""
 
+import json
 import os
 from pathlib import Path
 import subprocess
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PEER = 'matci' if ROOT.name == 'archsport' else 'archsport'
+SELF = json.loads((ROOT / 'extension/metadata.json').read_text(encoding='utf-8'))['uuid'].split('@')[0]
+PEERS = tuple(name for name in ('archsport', 'matci', 'notci') if name != SELF)
 OWNER = 'halfsamoan'
 FILES = (
     'docs/design/design-tokens.json',
@@ -29,8 +31,8 @@ def _branch_name():
     return result.stdout.strip() if result.returncode == 0 else 'main'
 
 
-def _remote_branch_exists(branch):
-    url = f'https://api.github.com/repos/{OWNER}/{PEER}/branches/{quote(branch, safe="")}'
+def _remote_branch_exists(peer, branch):
+    url = f'https://api.github.com/repos/{OWNER}/{peer}/branches/{quote(branch, safe="")}'
     request = Request(url, headers={'Accept': 'application/vnd.github+json',
                                     'User-Agent': 'paired-design-check'})
     try:
@@ -42,10 +44,10 @@ def _remote_branch_exists(branch):
         raise
 
 
-def _remote_files(branch):
+def _remote_files(peer, branch):
     files = {}
     for relative in FILES:
-        url = (f'https://raw.githubusercontent.com/{OWNER}/{PEER}/'
+        url = (f'https://raw.githubusercontent.com/{OWNER}/{peer}/'
                f'{quote(branch, safe="/")}/{relative}')
         with urlopen(url, timeout=15) as response:
             files[relative] = response.read()
@@ -65,17 +67,24 @@ def _compare(expected, source, *, warning_only=False):
     return 1
 
 
-def main() -> int:
-    sibling = ROOT.parent / PEER
+def _check_peer(peer):
+    sibling = ROOT.parent / peer
     if all((sibling / name).is_file() for name in FILES):
         expected = {name: (sibling / name).read_bytes() for name in FILES}
         return _compare(expected, str(sibling))
-
     branch = _branch_name()
-    if _remote_branch_exists(branch):
-        return _compare(_remote_files(branch), f'{PEER}:{branch}')
-    return _compare(_remote_files('main'), f'{PEER}:main (same-name peer branch absent)',
-                    warning_only=True)
+    try:
+        if _remote_branch_exists(peer, branch):
+            return _compare(_remote_files(peer, branch), f'{peer}:{branch}')
+        return _compare(_remote_files(peer, 'main'), f'{peer}:main (same-name peer branch absent)',
+                        warning_only=True)
+    except (HTTPError, URLError) as error:
+        print(f'WARNING: {peer} is not reachable on GitHub ({error}); skipped')
+        return 0
+
+
+def main() -> int:
+    return max(_check_peer(peer) for peer in PEERS)
 
 
 if __name__ == '__main__':
