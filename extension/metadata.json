@@ -5,7 +5,7 @@
   "shell-version": [
     "50"
   ],
-  "version": 32,
+  "version": 33,
   "settings-schema": "org.gnome.shell.extensions.archsport",
   "session-modes": [
     "user"

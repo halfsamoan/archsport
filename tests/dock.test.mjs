@@ -144,10 +144,10 @@ test('outside-click hit testing includes descendant controls and blank actor bou
     assert.equal(isPointWithinActor(root, 501, 100), false);
 });
 
-test('slab geometry: short ears, rounded bottom, seed sliver', () => {
+test('slab geometry: short ears, rounded bottom, rounded seed drop', () => {
     assert.deepEqual(notchGeometry(34, 212), {ear: 6, radius: 15, sliver: false});
     assert.deepEqual(notchGeometry(250, 416), {ear: 14, radius: 22, sliver: false});
-    assert.equal(notchGeometry(6, 104).sliver, true);
+    assert.deepEqual(notchGeometry(6, 104), {ear: 1, radius: 3, sliver: false});   // the seed is a small rounded drop since v33
 });
 
 test('transparent ears and bottom corners are outside while the slab accepts input', () => {
@@ -420,4 +420,18 @@ test('slab morphs ride a spring: growing overshoots ~2 % and settles, shrinking 
     // Measured in the harness: the first fit overshot 3.7% (16 px on a 492 px card); the curve now caps it.
     const curvePeak = Math.max(...Array.from({length: 101}, (_, i) => bezier(SPRING_OPEN.curve, i / 100)));
     assert.ok(curvePeak > 1.01 && curvePeak <= 1.025, `open curve peak ${curvePeak}`);
+});
+
+test('a closing slab stays a rounded drop down to the seed: no square-cornered frames', async () => {
+    const {notchGeometry, SLAB_FADE_MS, SPRING_CLOSE, springDuration} = await import('../extension/dockModel.js');
+    // Compact and card shapes are unchanged.
+    assert.deepEqual(notchGeometry(36, 292), {ear: 6, radius: 16, sliver: false});
+    assert.deepEqual(notchGeometry(146, 492), {ear: 14, radius: 22, sliver: false});
+    // v32 drew every height of 10 px or less as a plain rectangle for the last ~90 ms of a close.
+    for (let height = 2; height < 36; height++) {
+        const {ear, radius, sliver} = notchGeometry(height, 104);
+        assert.equal(sliver, false, `${height} px`);
+        assert.ok(radius >= 1 && ear >= 1 && ear + radius <= height, `${height} px: ear ${ear} r ${radius}`);
+    }
+    assert.ok(SLAB_FADE_MS > 0 && SLAB_FADE_MS < springDuration(SPRING_CLOSE) / 2);
 });
