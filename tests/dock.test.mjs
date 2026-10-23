@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DOCK_PROTOCOL, SNAP, buttonNumber, layoutIsland, canClaim, isActorWithin, isPointWithinActor, pointInNotchShape,
-    classifyOutsideSurface, dispatchOutsideDismiss, notchGeometry} from '../extension/dockModel.js';
+import {DOCK_PROTOCOL, SNAP, GRAB_PRIORITY, buttonNumber, layoutIsland, canClaim, needsGrab, isActorWithin, isPointWithinActor,
+    pointInNotchShape, classifyOutsideSurface, dispatchOutsideDismiss, notchGeometry} from '../extension/dockModel.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement} from '../extension/uiModel.js';
 
 test('score event celebrates only a verified watched-team increase', () => {
@@ -91,6 +91,16 @@ test('manual memory review keeps priority over sport event', () => {
 
 test('equal-priority manual open follows last-toggle ownership', () => {
     assert.equal(canClaim({id: 'matci', priority: 100}, 'archsport', 100), true);
+});
+
+test('only a manually opened card holds the stage grab; toasts never steal clicks or keys', () => {
+    const open = {visible: true, expanded: true};
+    assert.equal(GRAB_PRIORITY, 100);
+    assert.equal(needsGrab({id: 'archsport', priority: 100}, open), true);
+    for (const priority of [80, 60, 50, 40, 30]) assert.equal(needsGrab({id: 'x', priority}, open), false);
+    assert.equal(needsGrab({id: 'archsport', priority: 100}, {visible: true, expanded: false}), false);
+    assert.equal(needsGrab({id: 'archsport', priority: 100}, {visible: false, expanded: true}), false);
+    assert.equal(needsGrab(null, open), false);
 });
 
 test('button extraction supports direct and tuple GI return values', () => {
@@ -241,12 +251,11 @@ test('worker error payloads do not reset restart backoff', () => {
     assert.equal((reader.match(/this\._failures = 0;/g) ?? []).length, 1);
 });
 
-test('hit-region margins survive St style resets', () => {
+test('hit regions are placed by the slab layout, never from notify or style handlers', () => {
     const source = readFileSync(new URL('../extension/notchSurface.js', import.meta.url), 'utf8');
-    // St re-applies CSS margins on every style change, so margin_* constructor properties reset to 0.
-    assert.doesNotMatch(source, /margin_(left|right|top|bottom)\s*:/);
-    // Hit-region margins are re-applied after style changes for the same reason.
-    assert.match(source, /connect\('style-changed', updateHitRegions\)/);
+    // Setting child geometry from notify::width ran inside allocation and re-queued a relayout every morph frame.
+    assert.match(source, /vfunc_allocate\(container, box\)/);
+    assert.doesNotMatch(source, /updateHitRegions|margin_(left|right|top|bottom)/);
 });
 
 test('compact row fits the 34 px slab and the open notch has no forehead', async () => {
@@ -381,4 +390,34 @@ test('every inset focus ring sits on a painted background (St skips inset shadow
             assert.ok(/background-color:/.test(rule.body) || painted(base), `${selector} ring would be invisible`);
         }
     }
+});
+
+test('slab morphs ride a spring: growing overshoots ~2 % and settles, shrinking never overshoots', async () => {
+    const {SPRING_OPEN, SPRING_CLOSE, springAt, springDuration} = await import('../extension/dockModel.js');
+    const peak = spring => Math.max(...Array.from({length: 241}, (_, i) => springAt(i / 240, spring)));
+    assert.equal(springAt(0, SPRING_OPEN), 0);
+    assert.ok(peak(SPRING_OPEN) > 1.01 && peak(SPRING_OPEN) < 1.04, `open peak ${peak(SPRING_OPEN)}`);
+    assert.ok(peak(SPRING_CLOSE) <= 1, `close peak ${peak(SPRING_CLOSE)}`);
+    const open = springDuration(SPRING_OPEN);
+    const close = springDuration(SPRING_CLOSE);
+    assert.ok(open > 300 && open < 600, `open ${open} ms`);
+    assert.ok(close > 200 && close < 450, `close ${close} ms`);
+    // The shipped cubic-bezier must track the spring (Clutter progress functions do not work from GJS).
+    const bezier = ([x1, y1, x2, y2], x) => {
+        let t = x;
+        for (let i = 0; i < 12; i++) {
+            const dx = 3 * (1 - t) ** 2 * x1 + 6 * (1 - t) * t * (x2 - x1) + 3 * t * t * (1 - x2);
+            t = Math.min(1, Math.max(0, t - (3 * (1 - t) ** 2 * t * x1 + 3 * (1 - t) * t * t * x2 + t ** 3 - x) / dx));
+        }
+        return 3 * (1 - t) ** 2 * t * y1 + 3 * (1 - t) * t * t * y2 + t ** 3;
+    };
+    for (const spring of [SPRING_OPEN, SPRING_CLOSE]) {
+        const duration = springDuration(spring) / 1000;
+        for (let i = 1; i < 50; i++)
+            assert.ok(Math.abs(bezier(spring.curve, i / 50) - springAt(i / 50 * duration, spring)) < 0.025, `${spring.response} at ${i}`);
+    }
+    assert.ok(SPRING_CLOSE.curve[1] <= 1 && SPRING_CLOSE.curve[3] <= 1, 'a shrink never passes its target');
+    // Measured in the harness: the first fit overshot 3.7% (16 px on a 492 px card); the curve now caps it.
+    const curvePeak = Math.max(...Array.from({length: 101}, (_, i) => bezier(SPRING_OPEN.curve, i / 100)));
+    assert.ok(curvePeak > 1.01 && curvePeak <= 1.025, `open curve peak ${curvePeak}`);
 });
