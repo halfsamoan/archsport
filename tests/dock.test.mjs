@@ -279,7 +279,7 @@ test('compact row fits the 34 px slab and the open notch has no forehead', async
 
 test('content motion rides the slab curve and enters from the panel edge', () => {
     const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
-    assert.match(source, /import \{DockParticipant, easeOnCurve\} from '\.\/notchDock\.js';/);
+    assert.match(source, /import \{DockParticipant, easeOnCurve, closeEase, afterDispatch\} from '\.\/notchDock\.js';/);
     // The island draws the only slab; the app hands over its content tree.
     assert.doesNotMatch(source, /createNotchSurface|addChrome\(|removeChrome\(/);
     assert.match(source, /new DockParticipant\(\{id: this\.uuid, content: this\._root,/);
@@ -300,10 +300,16 @@ test('entrances start after the slab shows the attached tree', () => {
 
 test('collapse rebuilds compact content while the slab is still shrinking', () => {
     const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
-    // The dock fits the content to compact size after micro; rebuilding then avoids an empty slab.
-    assert.match(source, /const rebuildAfter = this\._dock\.state\.visible \? DESIGN\.motion\.micro : DESIGN\.motion\.collapse;/);
-    assert.match(source, /this\._closingTimer = GLib\.timeout_add\(GLib\.PRIORITY_DEFAULT, rebuildAfter,/);
-    assert.match(source, /entrances\.push\(\[this\._root\.get_first_child\(\), drop,\n\s+\{\.\.\.settled, duration: DESIGN\.motion\.primaryDuration\}\]\);/);
+    // v34: the card fades and shrinks for CLOSE_OUT_MS (only when a compact row follows; a slab retracting
+    // out of sight fades the content itself), the dock fits the content then, and the compact row grows in
+    // over CLOSE_IN_MS. Closes from Esc and the collapse button start after Clutter's event dispatch.
+    assert.match(source, /this\._closingTimer = GLib\.timeout_add\(GLib\.PRIORITY_DEFAULT, CLOSE_OUT_MS,/);
+    assert.match(source, /if \(this\._dock\.state\.visible\) \{\n\s+for \(const child of children\) \{\n\s+child\.set_pivot_point\(0\.5, 0\);\n\s+closeEase\(child, \{opacity: 0, scale_x: CONTENT_SHRINK_TO, scale_y: CONTENT_SHRINK_TO\}\);/);
+    assert.doesNotMatch(source, /easeOnCurve\(child, \{opacity: 0, duration: DESIGN\.motion\.micro\}\)/);
+    assert.match(source, /entrances\.push\(\[row, \{\.\.\.drop, scale_x: CONTENT_GROW_FROM, scale_y: CONTENT_GROW_FROM\},\n\s+\{\.\.\.settled, scale_x: 1, scale_y: 1, duration: CLOSE_IN_MS\}\]\);/);
+    assert.match(source, /_closeAfterDispatch\(\) \{\n\s+afterDispatch\(this\._dock\.dock, \(\) => \{/);
+    assert.match(source, /'pan-up-symbolic', '접기', \(\) => this\._closeAfterDispatch\(\)\)/);
+    assert.match(source, /KEY_Escape[\s\S]*?this\._closeAfterDispatch\(\);\n\s+return Clutter\.EVENT_STOP;/);
 });
 
 test('expanded height is measured from styled actors without a fudge factor', () => {
@@ -336,7 +342,7 @@ test('numpad toggle shortcut is bound on enable and released on disable', () => 
 
 test('closing releases notch focus and only grabs the root while visible', () => {
     const source = readFileSync(new URL('../extension/extension.js', import.meta.url), 'utf8');
-    assert.match(source, /import \{isActorWithin\} from '\.\/dockModel\.js';/);
+    assert.match(source, /import \{isActorWithin, CLOSE_OUT_MS, CLOSE_IN_MS, CONTENT_SHRINK_TO, CONTENT_GROW_FROM\} from '\.\/dockModel\.js';/);
     assert.match(source, /_returnWindow = global\.display\.get_focus_window\(\)/);
     assert.match(source, /_releaseFocus\(\) \{[\s\S]*?global\.stage\.set_key_focus\(null\);[\s\S]*?win\.focus\(global\.get_current_time\(\)\)/);
     assert.match(source, /if \(closing\) this\._releaseFocus\(\);/);
@@ -423,7 +429,7 @@ test('slab morphs ride a spring: growing overshoots ~2 % and settles, shrinking 
 });
 
 test('a closing slab stays a rounded drop down to the seed: no square-cornered frames', async () => {
-    const {notchGeometry, SLAB_FADE_MS, SPRING_CLOSE, springDuration} = await import('../extension/dockModel.js');
+    const {notchGeometry, SLAB_FADE, CLOSE_OUT_MS, CLOSE_IN_MS, SPRING_CLOSE, springDuration} = await import('../extension/dockModel.js');
     // Compact and card shapes are unchanged.
     assert.deepEqual(notchGeometry(36, 292), {ear: 6, radius: 16, sliver: false});
     assert.deepEqual(notchGeometry(146, 492), {ear: 14, radius: 22, sliver: false});
@@ -433,5 +439,11 @@ test('a closing slab stays a rounded drop down to the seed: no square-cornered f
         assert.equal(sliver, false, `${height} px`);
         assert.ok(radius >= 1 && ear >= 1 && ear + radius <= height, `${height} px: ear ${ear} r ${radius}`);
     }
-    assert.ok(SLAB_FADE_MS > 0 && SLAB_FADE_MS < springDuration(SPRING_CLOSE) / 2);
+    // v34: the slab fades out through the middle of the retract and the content hand-over splits the
+    // spring 55/45, so nothing thinner than ~15 px is ever drawn at full opacity.
+    const total = springDuration(SPRING_CLOSE);
+    assert.ok(SLAB_FADE.delay >= total * 0.3 && SLAB_FADE.delay + SLAB_FADE.duration <= total * 0.85,
+        `slab fade ${SLAB_FADE.delay}+${SLAB_FADE.duration} of ${total}`);
+    assert.equal(CLOSE_OUT_MS + CLOSE_IN_MS, total);
+    assert.ok(CLOSE_OUT_MS > total / 2 && CLOSE_OUT_MS < total * 0.6, `out ${CLOSE_OUT_MS} of ${total}`);
 });

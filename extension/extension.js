@@ -9,8 +9,8 @@ import Pango from 'gi://Pango';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
-import {DockParticipant, easeOnCurve} from './notchDock.js';
-import {isActorWithin} from './dockModel.js';
+import {DockParticipant, easeOnCurve, closeEase, afterDispatch} from './notchDock.js';
+import {isActorWithin, CLOSE_OUT_MS, CLOSE_IN_MS, CONTENT_SHRINK_TO, CONTENT_GROW_FROM} from './dockModel.js';
 import {DESIGN} from './designTokens.js';
 import {calculateExpandedViewport, scoreDirection, eventSummary, alertAnnouncement, latestEvent,
     liveMinuteLabel} from './uiModel.js';
@@ -125,7 +125,7 @@ export default class Archsport extends Extension {
         this._connect(global.stage, 'key-press-event', (_stage, event) => {
             if (event.get_key_symbol() !== Clutter.KEY_Escape ||
                 !isActorWithin(global.stage.get_key_focus(), this._root)) return Clutter.EVENT_PROPAGATE;
-            this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render();
+            this._closeAfterDispatch();
             return Clutter.EVENT_STOP;
         });
         this._connect(Main.layoutManager, 'monitors-changed', () => this._visibility());
@@ -205,6 +205,15 @@ export default class Archsport extends Extension {
         } catch (_error) {
             // Keep unmatched or unreadable markers for the next diagnostic run.
         }
+    }
+
+    // Esc and the collapse button arrive inside Clutter's event dispatch; the close itself runs right
+    // after it, like the global shortcut's (see notchDock.afterDispatch).
+    _closeAfterDispatch() {
+        afterDispatch(this._dock.dock, () => {
+            if (!this._enabled) return;
+            this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render();
+        });
     }
 
     _toggle() {
@@ -604,9 +613,9 @@ export default class Archsport extends Extension {
         const closing = !expanded && this._renderedExpanded;
         if (closing) this._releaseFocus();
         if (closing && !afterCollapse && this._interface.get_boolean('enable-animations')) {
-            // Keep the expanded content for the reverse morph: it fades out quickly as one
-            // piece while the slab retracts and clips it.
-            for (const child of this._root.get_children()) {
+            // The expanded content stays for the reverse morph; its controls stop taking input at once.
+            const children = this._root.get_children();
+            for (const child of children) {
                 const descendants = [child];
                 while (descendants.length) {
                     const actor = descendants.pop();
@@ -614,14 +623,18 @@ export default class Archsport extends Extension {
                     actor.can_focus = false;
                     descendants.push(...actor.get_children());
                 }
-                easeOnCurve(child, {opacity: 0, duration: DESIGN.motion.micro});
             }
             this._visibility();
-            // The dock fits the content to compact size after micro, so compact content can
-            // settle while the slab is still shrinking. A slab retracting out of sight stays
-            // empty until it is gone.
-            const rebuildAfter = this._dock.state.visible ? DESIGN.motion.micro : DESIGN.motion.collapse;
-            this._closingTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, rebuildAfter, () => {
+            // Down to the compact row: the card fades and shrinks towards the panel edge over the first
+            // part of the retract while the slab clips it; the row then grows in (CLOSE_IN_MS). A slab
+            // retracting out of sight fades the whole content itself (notchDock.placeContent).
+            if (this._dock.state.visible) {
+                for (const child of children) {
+                    child.set_pivot_point(0.5, 0);
+                    closeEase(child, {opacity: 0, scale_x: CONTENT_SHRINK_TO, scale_y: CONTENT_SHRINK_TO});
+                }
+            }
+            this._closingTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, CLOSE_OUT_MS, () => {
                 this._closingTimer = 0;
                 this._render(true);
                 return GLib.SOURCE_REMOVE;
@@ -664,7 +677,7 @@ export default class Archsport extends Extension {
             this._primaryFocus = identity;
             // The title row is the island's own surface: a click on it folds the card.
             identity.connect('button-release-event', () => {
-                this._toggle();
+                afterDispatch(this._dock.dock, () => this._toggle());
                 return Clutter.EVENT_STOP;
             });
             // The scoreboard below already carries both marks; a kickoff reminder without one
@@ -684,7 +697,7 @@ export default class Archsport extends Extension {
             header.add_child(identity);
             const tools = new St.BoxLayout({style_class: 'archsport-tools'});
             tools.add_child(focusKey(this._iconButton('preferences-system-symbolic', '설정', () => this._openPreferences()), 'settings'));
-            tools.add_child(focusKey(this._iconButton('pan-up-symbolic', '접기', () => { this._expanded = false; this._activeAlert = null; this._alertAnimate = false; this._render(); }), 'collapse'));
+            tools.add_child(focusKey(this._iconButton('pan-up-symbolic', '접기', () => this._closeAfterDispatch()), 'collapse'));
             header.add_child(tools);
             this._root.add_child(header);
             expandedHeader = header;
@@ -905,9 +918,11 @@ export default class Archsport extends Extension {
                 entrances.push([expandedScroll, drop, {...settled, duration: DESIGN.motion.secondaryDuration,
                     delay: DESIGN.motion.secondaryDelay}]);
             } else if (closing && this._dock.state.visible) {
-                // Compact content settles while the slab is still shrinking around it.
-                entrances.push([this._root.get_first_child(), drop,
-                    {...settled, duration: DESIGN.motion.primaryDuration}]);
+                // The compact row grows in over the end of the retract, when the slab is near its size.
+                const row = this._root.get_first_child();
+                row.set_pivot_point(0.5, 0.5);
+                entrances.push([row, {...drop, scale_x: CONTENT_GROW_FROM, scale_y: CONTENT_GROW_FROM},
+                    {...settled, scale_x: 1, scale_y: 1, duration: CLOSE_IN_MS}]);
             }
             for (const [actor, from, to] of entrances) {
                 Object.assign(actor, from);
